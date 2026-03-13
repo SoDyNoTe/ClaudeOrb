@@ -1,9 +1,13 @@
 const { menubar } = require('menubar');
-const { app, Menu, nativeImage, BrowserWindow } = require('electron');
+const { app, Menu, nativeImage } = require('electron');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const AutoLaunch = require('auto-launch');
+
+const autoLauncher = new AutoLaunch({ name: 'Claude Companion' });
+autoLauncher.enable();
 
 // ── Stats cache ──────────────────────────────────────────────────────────────
 
@@ -70,8 +74,10 @@ function parseJsonlFiles() {
   const files = walkDir(claudeDir);
 
   const now = Date.now();
-  const DAY = 24 * 60 * 60 * 1000;
-  const WEEK = 7 * DAY;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayStartMs = todayStart.getTime();
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
 
   // Per-window accumulators
   const today = { tokens: 0, cost: 0, lines: 0, files: new Set(), modelTokens: {} };
@@ -111,8 +117,8 @@ function parseJsonlFiles() {
         activeDays.add(dayKey);
       }
 
-      // Today bucket
-      if (age <= DAY) {
+      // Today bucket (calendar day: midnight → now)
+      if (ts >= todayStartMs) {
         today.tokens += tokens;
         today.cost   += cost;
         today.modelTokens[model] = (today.modelTokens[model] || 0) + tokens;
@@ -154,7 +160,7 @@ function parseJsonlFiles() {
     const dayStr = checkDate.toISOString().slice(0, 10);
     if (activeDays.has(dayStr)) {
       streak++;
-      checkDate = new Date(checkDate.getTime() - DAY);
+      checkDate = new Date(checkDate.getTime() - 24 * 60 * 60 * 1000);
     } else {
       break;
     }
@@ -177,10 +183,75 @@ function parseJsonlFiles() {
   };
 }
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function calcTrends() {
+  const claudeDir = path.join(os.homedir(), '.claude', 'projects');
+  const files = walkDir(claudeDir);
+
+  const now = Date.now();
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+
+  // Build a map of YYYY-MM-DD → { tokens, cost }
+  const byDay = {};
+
+  for (const file of files) {
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); } catch { continue; }
+
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let obj;
+      try { obj = JSON.parse(trimmed); } catch { continue; }
+
+      if (obj.type !== 'assistant') continue;
+      const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : null;
+      if (!ts || now - ts > WEEK) continue;
+
+      const msg   = obj.message || {};
+      const usage = msg.usage || {};
+      const model = msg.model || '';
+      const inp   = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+      const out   = usage.output_tokens || 0;
+      const tokens = inp + out + (usage.cache_read_input_tokens || 0);
+      const cost   = calcCost(model, usage);
+
+      // Use local date string so days match the user's timezone
+      const d = new Date(ts);
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (!byDay[dateKey]) byDay[dateKey] = { tokens: 0, cost: 0 };
+      byDay[dateKey].tokens += tokens;
+      byDay[dateKey].cost   += cost;
+    }
+  }
+
+  // Build the last 7 calendar days (oldest → newest)
+  const result = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const data = byDay[dateKey] || { tokens: 0, cost: 0 };
+    result.push({
+      day:    DAY_NAMES[d.getDay()],
+      date:   dateKey,
+      tokens: data.tokens,
+      cost:   Math.round(data.cost * 10000) / 10000,
+    });
+  }
+
+  return result;
+}
+
+let cachedTrends = null;
+
 function refreshStats() {
   try {
-    cachedStats = parseJsonlFiles();
-    lastUpdated = Date.now();
+    cachedStats  = parseJsonlFiles();
+    cachedTrends = calcTrends();
+    lastUpdated  = Date.now();
   } catch (err) {
     console.error('Failed to refresh stats:', err);
   }
@@ -194,17 +265,21 @@ setInterval(refreshStats, 30_000);
 
 const server = express();
 
-server.use((req, res, next) => {
+server.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   next();
 });
 
-server.get('/health', (req, res) => {
+server.get('/health', (_req, res) => {
   res.json({ status: 'ok', version: '1.0.0' });
 });
 
-server.get('/stats', (req, res) => {
+server.get('/stats', (_req, res) => {
   res.json(cachedStats || { error: 'stats not yet available' });
+});
+
+server.get('/trends', (_req, res) => {
+  res.json(cachedTrends || []);
 });
 
 server.listen(3000, '127.0.0.1', () => {
