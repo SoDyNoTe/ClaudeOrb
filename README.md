@@ -1,66 +1,57 @@
-# Claude Companion
+# ClaudeOrb Companion
 
-A Mac menubar app that reads your Claude Code usage data and serves it via a local HTTP API.
+**Local companion app that powers ClaudeOrb's Code and Trends tabs**
 
-## Features
+The companion app runs silently in your Mac menubar, reads your Claude Code session data from `~/.claude/projects/`, and serves it to the [ClaudeOrb Chrome extension](https://github.com/SoDyNoTe/claude-orb) over a local HTTP API.
 
-- **Menubar icon** with a live dropdown showing today's stats
-- **HTTP server** at `localhost:3000` for use by the Chrome extension
-- **Auto-refreshes** stats every 30 seconds from `~/.claude/projects/`
+---
 
-## Install
+## Requirements
+
+- macOS
+- Node.js 18+
+
+## Installation
 
 ```bash
 npm install
 npm start
 ```
 
-The app will appear as `⚡` in your Mac menubar. Click it to see your stats.
+The app appears as **⚡** in your menubar. It starts automatically on login.
+
+---
+
+## What it unlocks in ClaudeOrb
+
+### Code tab
+Real-time stats for the current calendar day:
+- Total tokens used
+- Estimated cost (calculated from Anthropic's published pricing)
+- Lines of code written
+- Files edited
+- Top model in use
+
+### Trends tab
+Historical usage charts pulled from `GET /trends` and `GET /trends/30`:
+- Last 7 days — bar chart with daily token and cost breakdown
+- Last 30 days — extended view for monthly usage patterns
+
+---
 
 ## HTTP API
 
-### `GET /health`
+| Endpoint | Description |
+|---|---|
+| `GET /health` | `{ "status": "ok", "version": "1.0.0" }` |
+| `GET /stats` | Today + this week stats |
+| `GET /trends` | Last 7 calendar days |
+| `GET /trends/30` | Last 30 calendar days |
 
-```json
-{ "status": "ok", "version": "1.0.0" }
-```
+All responses include `Access-Control-Allow-Origin: *` so the extension can reach the API directly.
 
-### `GET /stats`
+---
 
-```json
-{
-  "today": {
-    "tokens": 45230,
-    "cost": 1.24,
-    "lines": 342,
-    "files": 12,
-    "topModel": "sonnet"
-  },
-  "week": {
-    "tokens": 284000,
-    "cost": 7.80,
-    "streak": 5
-  },
-  "lastUpdated": "2026-03-12T23:00:00Z"
-}
-```
+## License
 
-CORS is enabled for all origins so the Chrome extension can reach it directly.
-
-## Menubar dropdown
-
-```
-⚡ Tokens today: 45,230
-💰 Cost today: $1.24
-📝 Lines written: 342
-🔥 Streak: 5 days
-──
-Last updated: 30s ago
-Quit
-```
-
-## Requirements
-
-- macOS
-- Node.js 18+
-- Claude Code with data in `~/.claude/projects/`
+MIT
