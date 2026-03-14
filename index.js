@@ -185,12 +185,12 @@ function parseJsonlFiles() {
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function calcTrends() {
+function calcTrends(days = 7) {
   const claudeDir = path.join(os.homedir(), '.claude', 'projects');
   const files = walkDir(claudeDir);
 
   const now = Date.now();
-  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const windowMs = days * 24 * 60 * 60 * 1000;
 
   // Build a map of YYYY-MM-DD → { tokens, cost }
   const byDay = {};
@@ -207,7 +207,7 @@ function calcTrends() {
 
       if (obj.type !== 'assistant') continue;
       const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : null;
-      if (!ts || now - ts > WEEK) continue;
+      if (!ts || now - ts > windowMs) continue;
 
       const msg   = obj.message || {};
       const usage = msg.usage || {};
@@ -226,16 +226,16 @@ function calcTrends() {
     }
   }
 
-  // Build the last 7 calendar days (oldest → newest)
+  // Build the last N calendar days (oldest → newest)
   const result = [];
-  for (let i = 6; i >= 0; i--) {
+  for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - i);
     const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const data = byDay[dateKey] || { tokens: 0, cost: 0 };
     result.push({
-      day:    DAY_NAMES[d.getDay()],
+      day:    days <= 7 ? DAY_NAMES[d.getDay()] : String(d.getDate()),
       date:   dateKey,
       tokens: data.tokens,
       cost:   Math.round(data.cost * 10000) / 10000,
@@ -246,12 +246,14 @@ function calcTrends() {
 }
 
 let cachedTrends = null;
+let cachedTrends30 = null;
 
 function refreshStats() {
   try {
-    cachedStats  = parseJsonlFiles();
-    cachedTrends = calcTrends();
-    lastUpdated  = Date.now();
+    cachedStats    = parseJsonlFiles();
+    cachedTrends   = calcTrends(7);
+    cachedTrends30 = calcTrends(30);
+    lastUpdated    = Date.now();
   } catch (err) {
     console.error('Failed to refresh stats:', err);
   }
@@ -280,6 +282,10 @@ server.get('/stats', (_req, res) => {
 
 server.get('/trends', (_req, res) => {
   res.json(cachedTrends || []);
+});
+
+server.get('/trends/30', (_req, res) => {
+  res.json(cachedTrends30 || []);
 });
 
 server.listen(3000, '127.0.0.1', () => {
