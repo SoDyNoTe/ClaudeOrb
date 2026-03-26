@@ -47,6 +47,34 @@
     flex-shrink: 0;
   }
   .header-left { display: flex; align-items: center; gap: 7px; }
+  .btn-close {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: none; cursor: pointer;
+    color: rgba(255,255,255,0.6);
+    font-size: 14px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; transition: background 0.15s, color 0.15s;
+  }
+  .btn-close:hover { background: rgba(255,255,255,0.18); color: #fff; }
+  .btn-detach {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: none; cursor: pointer;
+    color: rgba(255,255,255,0.45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; transition: background 0.15s, color 0.15s;
+    -webkit-app-region: no-drag;
+  }
+  .btn-detach:hover { background: rgba(255,255,255,0.18); color: #fff; }
+  .header-right { display: flex; align-items: center; gap: 5px; }
+  /* Draggable header for detached mode */
+  .header.draggable { -webkit-app-region: drag; }
+  .header.draggable .btn-close,
+  .header.draggable .btn-detach,
+  .header.draggable .logo { -webkit-app-region: no-drag; }
   .logo {
     width: 22px; height: 22px;
     background: linear-gradient(135deg, var(--amber) 0%, var(--amber2) 100%);
@@ -82,6 +110,9 @@
   /* ── Content area ── */
   .content {
     flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;
@@ -95,20 +126,39 @@
     opacity: 0;
     transition: opacity 0.18s ease;
   }
+  /* Most tabs: natural height, .content scrolls if needed */
   .pane.active {
     display: block;
+    flex: none;
+    height: auto;
     opacity: 1;
+  }
+  /* Code tab: fills .content exactly for even row distribution */
+  #pane-code.active {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  /* Usage tab: simple vertical stack */
+  #pane-usage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
   }
 
   /* ── Section labels ── */
   .section-label {
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 9px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.7px;
     color: var(--muted);
-    margin-bottom: 8px;
-    margin-top: 12px;
+    margin-bottom: 4px;
+    margin-top: 10px;
+    line-height: 1;
+    flex-shrink: 0;
   }
   .section-label:first-child { margin-top: 0; }
 
@@ -133,8 +183,7 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 10px 12px 11px;
-    margin-bottom: 7px;
+    padding: 8px 12px 9px;
   }
   .usage-card-label {
     font-size: 10px;
@@ -142,15 +191,15 @@
     text-transform: uppercase;
     letter-spacing: 0.8px;
     color: var(--muted);
-    margin-bottom: 9px;
+    margin-bottom: 6px;
   }
   .usage-card-body {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
   }
   /* Ring */
-  .ring-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+  .ring-wrap { position: relative; width: 90px; height: 90px; flex-shrink: 0; }
   .ring-wrap svg { transform: rotate(-90deg); }
   .ring-center {
     position: absolute;
@@ -161,10 +210,10 @@
     justify-content: center;
     gap: 2px;
   }
-  .ring-pct { font-size: 19px; font-weight: 700; line-height: 1; color: var(--amber); }
-  .ring-sub { font-size: 10px; color: var(--muted); line-height: 1; }
+  .ring-pct { font-size: 17px; font-weight: 700; line-height: 1; color: var(--amber); }
+  .ring-sub { font-size: 9px; color: var(--muted); line-height: 1; }
   /* Stats column */
-  .usage-stats { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+  .usage-stats { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
   .usage-stat-row {
     display: flex;
     justify-content: space-between;
@@ -177,35 +226,38 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    margin-bottom: 7px;
+    flex: none;
     overflow: hidden;
   }
   .extra-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 9px 12px;
+    padding: 8px 12px;
     cursor: pointer;
     user-select: none;
   }
-  .extra-header-left { display: flex; align-items: center; gap: 6px; }
+  .extra-header-left { display: flex; align-items: center; gap: 8px; }
   .extra-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); }
+  .extra-preview { font-size: 12px; font-weight: 600; color: var(--amber); }
   .extra-arrow {
-    font-size: 10px; color: var(--muted); display: inline-block;
-    transition: transform 0.2s ease;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    transition: transform 0.22s ease;
   }
-  .extra-arrow.open { transform: rotate(90deg); }
+  .extra-arrow.open { transform: rotate(180deg); }
   .extra-body {
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.2s ease;
+    transition: max-height 0.25s ease;
   }
-  .extra-body.open { max-height: 60px; }
+  .extra-body.open { max-height: 120px; }
   .extra-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 12px 9px;
+    padding: 0 12px 8px;
   }
   .extra-val   { font-size: 12px; font-weight: 600; color: var(--amber); }
   .badge-green { font-size: 11px; font-weight: 600; color: var(--green); }
@@ -238,30 +290,48 @@
   .btn-connect:active { transform: scale(0.97); }
 
   /* ── Stat list (Code tab) ── */
-  .stat-list { display: flex; flex-direction: column; gap: 1px; }
+  #pane-code {
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .stat-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
   .stat-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 11px;
+    padding: 0 12px;
+    flex: 1;
+    min-height: 0;
     background: var(--card);
     border-radius: 0;
   }
-  .stat-row:first-child { border-radius: 9px 9px 0 0; }
-  .stat-row:last-child  { border-radius: 0 0 9px 9px; }
-  .stat-row:only-child  { border-radius: 9px; }
+  .stat-row:first-child { border-radius: 8px 8px 0 0; }
+  .stat-row:last-child  { border-radius: 0 0 8px 8px; }
+  .stat-row:only-child  { border-radius: 8px; }
   .stat-row + .stat-row { border-top: 1px solid var(--border); }
   .stat-icon-label { display: flex; align-items: center; gap: 8px; }
-  .stat-icon { font-size: 14px; width: 20px; text-align: center; }
-  .stat-name { font-size: 12px; color: var(--muted); }
-  .stat-val  { font-size: 13px; font-weight: 600; color: var(--text); }
+  .stat-icon { font-size: 13px; width: 18px; text-align: center; }
+  .stat-name { font-size: 13px; color: var(--muted); }
+  .stat-val  { font-size: 14px; font-weight: 600; color: var(--text); }
 
   /* ── Trends pane — fills full content height ── */
   #pane-trends {
-    height: 100%;
     flex-direction: column;
-    padding: 10px 8px;
+    padding: 10px 10px;
     box-sizing: border-box;
+  }
+  #pane-trends.active {
+    display: flex;
+    flex: 1;
+    min-height: 0;
   }
   #pane-trends .bar-chart {
     flex: 1;
@@ -272,133 +342,155 @@
   #pane-trends .bars-wrap {
     flex: 1;
     height: auto;
-    min-height: 250px;
+    min-height: 200px;
   }
 
   /* ── Bar chart ── */
   .bar-chart {
-    background: #242424;
-    border: 1px solid #2d2d2d;
-    border-radius: 12px;
-    padding: 14px 30px 12px;
+    background: #1e1e1e;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 16px 14px 12px;
     overflow: visible;
   }
   .chart-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
     flex-shrink: 0;
   }
   .chart-label {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 1px;
     color: var(--muted);
     white-space: nowrap;
   }
   .chart-total-pill {
     font-size: 11px;
-    font-weight: 700;
-    color: #000;
-    background: var(--amber);
-    padding: 3px 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 3px 9px;
     border-radius: 20px;
     flex-shrink: 0;
   }
   .bars-wrap {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
+    gap: 5px;
     height: 128px;
-    padding: 0 6px;
     overflow: visible;
-    background-image: repeating-linear-gradient(
-      180deg,
-      rgba(255,255,255,0.05) 0,
-      rgba(255,255,255,0.05) 1px,
-      transparent 1px,
-      transparent 25%
-    );
+    position: relative;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    /* 3 subtle horizontal grid lines */
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 100% 33.33%, 100% 33.33%, 100% 33.33%;
+    background-position: 0 0, 0 33.33%, 0 66.66%;
+    background-repeat: no-repeat;
   }
   .bar-col {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
+    gap: 0;
     height: 100%;
     justify-content: flex-end;
   }
   .bar-fill {
-    width: 100%;
-    border-radius: 4px 4px 0 0;
+    width: 80%;
+    border-radius: 5px 5px 0 0;
     background: #3d3d3d;
-    transition: height 0.35s ease, filter 0.15s;
+    transition: height 0.4s cubic-bezier(.4,0,.2,1), filter 0.15s;
     cursor: default;
   }
-  .bar-fill:hover { filter: brightness(1.3); }
+  .bar-fill:hover { filter: brightness(1.25); }
   .bar-fill.today-bar { background: var(--amber); }
-  .bar-fill.past-bar  { background: #7a4a10; }
+  .bar-fill.past-bar  { background: #5c3a0e; }
   .bar-fill.empty-bar {
+    width: 70%;
     background: transparent;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 3px 3px 0 0;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
   }
   .bar-amt {
     font-size: 10px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.7);
+    font-weight: 500;
+    color: rgba(255,255,255,0.45);
     white-space: nowrap;
     line-height: 1;
     text-align: center;
     width: 100%;
-    margin-bottom: 9px;
+    margin-top: 5px;
+    margin-bottom: 8px;
   }
-  .bar-day {
-    font-size: 9px;
-    color: #777;
-    white-space: nowrap;
+  /* Day labels live in a separate row below the bars-wrap baseline */
+  .bars-days {
+    display: flex;
+    padding-top: 7px;
+    flex-shrink: 0;
+  }
+  .bar-day-col {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
     line-height: 1;
+    white-space: nowrap;
   }
-  .bar-day.today-label { color: var(--amber); font-weight: 600; }
+  .bar-day-col.today { color: var(--amber); font-weight: 600; }
 
   /* ── Minimal tab ── */
-  .minimal-wrap {
+  #pane-minimal.active {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    padding: 20px 14px;
-    gap: 8px;
+    height: calc(100vh - 100px);
+    padding: 0 14px;
     cursor: pointer;
-    min-height: 320px;
+  }
+  .minimal-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
   }
   .minimal-label {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
     color: var(--muted);
+    line-height: 1;
+  }
+  @keyframes minimal-glow {
+    0%, 100% { text-shadow: 0 0 16px rgba(255,149,0,0.25); }
+    50%       { text-shadow: 0 0 32px rgba(255,149,0,0.55), 0 0 8px rgba(255,149,0,0.3); }
   }
   .minimal-value {
-    font-size: 52px;
+    font-size: 56px;
     font-weight: 800;
     color: var(--amber);
     letter-spacing: -2px;
     line-height: 1;
-    transition: opacity 0.2s;
-  }
-  .minimal-sub {
-    font-size: 12px;
-    color: var(--muted);
+    transition: opacity 0.15s;
+    animation: minimal-glow 2.8s ease-in-out infinite;
   }
   .minimal-hint {
-    font-size: 10px;
+    font-size: 11px;
     color: #555;
-    margin-top: 12px;
+    letter-spacing: 0.2px;
+    margin-top: 2px;
   }
 
   /* ── Footer ── */
@@ -434,8 +526,18 @@
   <!-- Header -->
   <div class="header">
     <div class="header-left">
-      <div class="logo">⚡</div>
+      <img id="app-icon" src="" width="48" height="48" style="border-radius: 12px;">
       <span class="app-name">ClaudeOrb</span>
+    </div>
+    <div class="header-right">
+      <button class="btn-detach" id="btn-detach">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4.5 1.5H2a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <path d="M6.5 1.5H9.5V4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9.5 1.5L5.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="btn-close" onclick="window.close()" title="Close">×</button>
     </div>
   </div>
 
@@ -466,7 +568,7 @@
         <div class="usage-card-label">Session · 5-Hour</div>
         <div class="usage-card-body">
           <div class="ring-wrap">
-            <svg width="110" height="110" viewBox="0 0 86 86">
+            <svg width="90" height="90" viewBox="0 0 86 86">
               <circle cx="43" cy="43" r="35" fill="none" stroke="#2e2e2e" stroke-width="7"/>
               <circle id="ring-5h" cx="43" cy="43" r="35" fill="none"
                 stroke="#ff9500" stroke-width="7" stroke-linecap="round"
@@ -500,7 +602,7 @@
         <div class="usage-card-label">Weekly · 7-Day</div>
         <div class="usage-card-body">
           <div class="ring-wrap">
-            <svg width="110" height="110" viewBox="0 0 86 86">
+            <svg width="90" height="90" viewBox="0 0 86 86">
               <circle cx="43" cy="43" r="35" fill="none" stroke="#2e2e2e" stroke-width="7"/>
               <circle id="ring-7d" cx="43" cy="43" r="35" fill="none"
                 stroke="#ff9500" stroke-width="7" stroke-linecap="round"
@@ -529,25 +631,35 @@
         </div>
       </div>
 
-      <!-- EXTRA USAGE -->
-      <div class="usage-card" id="card-extra" style="display:none">
-        <div class="usage-card-label">Extra Usage</div>
-        <div class="usage-stats" style="padding:0">
-          <div class="usage-stat-row">
+      <!-- EXTRA USAGE (collapsible) -->
+      <div class="extra-card" id="card-extra" style="display:none">
+        <div class="extra-header" id="extra-toggle">
+          <div class="extra-header-left">
+            <span class="extra-label">Extra Usage</span>
+            <span class="extra-preview" id="extra-preview">—</span>
+          </div>
+          <span class="extra-arrow" id="extra-arrow">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </div>
+        <div class="extra-body" id="extra-body">
+          <div class="extra-row">
             <span class="usage-stat-label">Spent</span>
-            <span class="usage-stat-val" id="extra-spent">—</span>
+            <span class="extra-val" id="extra-spent">—</span>
           </div>
-          <div class="usage-stat-row">
+          <div class="extra-row">
             <span class="usage-stat-label">Used</span>
-            <span class="usage-stat-val" id="extra-pct">—</span>
+            <span class="extra-val" id="extra-pct">—</span>
           </div>
-          <div class="usage-stat-row">
+          <div class="extra-row">
             <span class="usage-stat-label">Limit</span>
-            <span class="usage-stat-val" id="extra-limit">—</span>
+            <span class="extra-val" id="extra-limit">—</span>
           </div>
-          <div class="usage-stat-row">
+          <div class="extra-row">
             <span class="usage-stat-label">Resets</span>
-            <span class="usage-stat-val" id="extra-resets">—</span>
+            <span class="extra-val" id="extra-resets">—</span>
           </div>
         </div>
       </div>
@@ -632,6 +744,7 @@
           <span class="chart-total-pill" id="chart-total">—</span>
         </div>
         <div class="bars-wrap" id="bars-main"></div>
+        <div class="bars-days" id="bars-days-main"></div>
       </div>
 
     </div><!-- /pane-trends -->
@@ -641,8 +754,7 @@
       <div class="minimal-wrap" id="minimal-tap">
         <div class="minimal-label" id="min-label">Tokens Today</div>
         <div class="minimal-value" id="min-value">—</div>
-        <div class="minimal-sub" id="min-sub">—</div>
-        <div class="minimal-hint">tap to cycle</div>
+        <div class="minimal-hint">click to switch metric</div>
       </div>
     </div>
 
@@ -665,12 +777,28 @@
 // ── Constants ──────────────────────────────────────────────────────────────────
 const CIRC = 219.91; // 2π × 35
 
+// ── URL params ────────────────────────────────────────────────────────────────
+const params   = new URLSearchParams(window.location.search);
+const iconSrc  = params.get('icon');
+if (iconSrc) document.getElementById('app-icon').src = iconSrc;
+
+// ── Detached mode ─────────────────────────────────────────────────────────────
+const isDetached = params.get('detached') === 'true';
+if (isDetached) {
+  document.querySelector('.header').classList.add('draggable');
+  document.getElementById('btn-detach').style.display = 'none';
+}
+document.getElementById('btn-detach').addEventListener('click', () => {
+  fetch('http://localhost:3000/open-detached', { method: 'POST' }).catch(() => {});
+});
+
 // ── State ──────────────────────────────────────────────────────────────────────
 let stats       = null;
 let usageData   = null;
 let trends7     = [];
 let trends30    = [];
-let minimalMode = 0;   // 0=tokens 1=cost 2=lines
+let minimalMode   = 0;     // 0=tokens 1=cost 2=lines
+let extraExpanded = false; // extra usage card state
 let lastFetch   = null;
 let hasSession  = false;
 
@@ -797,14 +925,22 @@ function renderUsage() {
   if (ex) {
     cardExtra.style.display = 'block';
     const col = ringColor(Math.min(ex.utilization || 0, 100));
-    const spentEl  = document.getElementById('extra-spent');
-    const pctEl    = document.getElementById('extra-pct');
+    // Header preview (always visible)
+    document.getElementById('extra-preview').textContent = ex.spent || '—';
+    // Body details
+    const spentEl = document.getElementById('extra-spent');
+    const pctEl   = document.getElementById('extra-pct');
     spentEl.textContent  = ex.spent       || '—';
     spentEl.style.color  = col;
     pctEl.textContent    = ex.utilization != null ? ex.utilization + '%' : '—';
     pctEl.style.color    = col;
     document.getElementById('extra-limit').textContent  = ex.limit    || '—';
     document.getElementById('extra-resets').textContent = ex.resets_at || '—';
+    // Restore expanded/collapsed state without animation flash
+    const body  = document.getElementById('extra-body');
+    const arrow = document.getElementById('extra-arrow');
+    body.classList.toggle('open', extraExpanded);
+    arrow.classList.toggle('open', extraExpanded);
   } else {
     cardExtra.style.display = 'none';
   }
@@ -875,13 +1011,15 @@ function renderBars(containerId, data, todayKey) {
   if (!wrap) return;
   wrap.innerHTML = '';
 
+  // Populate sibling day-label row if present
+  const daysWrap = document.getElementById(containerId.replace('bars-', 'bars-days-'));
+  if (daysWrap) daysWrap.innerHTML = '';
+
   const todayMs = new Date(todayKey + 'T00:00:00').getTime();
   const vals    = data.map(d => d.cost);
   const maxVal  = Math.max(...vals, 1);
-  // Compute usable bar height from actual rendered wrap height, fallback 220
   const wrapH   = wrap.offsetHeight || 270;
-  const maxBarH = Math.max(wrapH - 50, 120); // subtract label rows
-  const last    = data.length - 1;
+  const maxBarH = Math.max(wrapH - 30, 120);
 
   data.forEach((d, i) => {
     const v        = d.cost;
@@ -895,7 +1033,7 @@ function renderBars(containerId, data, todayKey) {
     const bar = document.createElement('div');
     if (isFuture) {
       bar.className = 'bar-fill empty-bar';
-      bar.style.height = '3px';
+      bar.style.height = '8px';
     } else {
       const h = v > 0 ? Math.max(4, Math.round((v / maxVal) * maxBarH)) : 0;
       bar.className = 'bar-fill' + (isToday ? ' today-bar' : v > 0 ? ' past-bar' : '');
@@ -908,32 +1046,35 @@ function renderBars(containerId, data, todayKey) {
       const amt = document.createElement('div');
       amt.className = 'bar-amt';
       amt.textContent = '$' + v.toFixed(2);
-      if (i === 0)    amt.style.textAlign = 'left';
-      if (i === last) amt.style.textAlign = 'right';
       col.appendChild(amt);
     }
 
-    const dayLbl = document.createElement('div');
-    dayLbl.className = 'bar-day' + (isToday ? ' today-label' : '');
-    dayLbl.textContent = d.day;
-    col.appendChild(dayLbl);
-
     wrap.appendChild(col);
+
+    // Day label goes in the separate row below the baseline
+    if (daysWrap) {
+      const dayEl = document.createElement('div');
+      dayEl.className = 'bar-day-col' + (isToday ? ' today' : '');
+      dayEl.textContent = d.day;
+      daysWrap.appendChild(dayEl);
+    }
   });
 }
 
 function renderMinimal() {
   if (!stats) return;
-  const t = stats.today || {};
+  const t   = stats.today || {};
+  const fhP = usageData?.five_hour?.utilization;
+  const sdP = usageData?.seven_day?.utilization;
   const modes = [
-    { label: 'Tokens Today',  value: fmtTokens(t.tokens || 0), sub: 'api tokens' },
-    { label: 'Est. Spend Today', value: '$' + (t.cost || 0).toFixed(2), sub: 'est. api spend' },
-    { label: 'Lines Written', value: fmtNum(t.lines || 0), sub: 'lines of code' },
+    { label: 'Tokens Today',     value: fmtTokens(t.tokens || 0) },
+    { label: 'Est. Spend Today', value: '$' + (t.cost || 0).toFixed(2) },
+    { label: 'Session Usage',    value: fhP != null ? fhP + '%' : '—' },
+    { label: 'Weekly Usage',     value: sdP != null ? sdP + '%' : '—' },
   ];
-  const m = modes[minimalMode];
+  const m = modes[minimalMode % modes.length];
   document.getElementById('min-label').textContent = m.label;
   document.getElementById('min-value').textContent = m.value;
-  document.getElementById('min-sub').textContent   = m.sub;
 }
 
 function renderFooter() {
@@ -961,7 +1102,8 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     const target = document.getElementById('pane-' + tab.dataset.tab);
     if (target) {
-      target.style.display = target.id === 'pane-trends' ? 'flex' : 'block';
+      const flexPanes = ['pane-trends', 'pane-code', 'pane-minimal'];
+      target.style.display = flexPanes.includes(target.id) ? 'flex' : 'block';
       // Trigger reflow for transition
       void target.offsetWidth;
       target.classList.add('active');
@@ -973,12 +1115,19 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 
+// ── Extra usage toggle ────────────────────────────────────────────────────────
+document.getElementById('extra-toggle').addEventListener('click', () => {
+  extraExpanded = !extraExpanded;
+  document.getElementById('extra-body').classList.toggle('open', extraExpanded);
+  document.getElementById('extra-arrow').classList.toggle('open', extraExpanded);
+});
+
 // ── Minimal tap ───────────────────────────────────────────────────────────────
 document.getElementById('minimal-tap').addEventListener('click', () => {
   const val = document.getElementById('min-value');
   val.style.opacity = '0';
   setTimeout(() => {
-    minimalMode = (minimalMode + 1) % 3;
+    minimalMode = (minimalMode + 1) % 4;
     renderMinimal();
     val.style.opacity = '1';
   }, 100);

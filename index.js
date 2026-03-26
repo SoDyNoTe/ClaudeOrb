@@ -1,13 +1,22 @@
 'use strict';
+require('events').EventEmitter.defaultMaxListeners = 20;
 
 const { menubar }                                      = require('menubar');
 const { app, BrowserWindow, Notification,
-        Menu }                                         = require('electron');
+        Menu, screen, nativeImage }                    = require('electron');
 const express                                          = require('express');
 const fs                                               = require('fs');
 const path                                             = require('path');
 const os                                               = require('os');
 const AutoLaunch                                       = require('auto-launch');
+
+// ── App icon ──────────────────────────────────────────────────────────────────
+
+const iconPath      = path.join(__dirname, 'assets', 'icon.png');
+const appIcon       = nativeImage.createFromPath(iconPath);
+const trayIcon      = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+const icon22Base64  = fs.readFileSync(path.join(__dirname, 'assets', 'icon22.png')).toString('base64');
+const icon22DataUrl = `data:image/png;base64,${icon22Base64}`;
 
 // ── Session persistence ───────────────────────────────────────────────────────
 
@@ -276,6 +285,33 @@ httpApp.post('/trigger-poll', (_req, res) => {
   res.json({ ok: true });
 });
 
+let detachedWin = null;
+
+httpApp.post('/open-detached', (_req, res) => {
+  if (detachedWin && !detachedWin.isDestroyed()) {
+    detachedWin.focus();
+    return res.json({ ok: true });
+  }
+  const { workAreaSize, workArea } = screen.getPrimaryDisplay();
+  const winW = 340, winH = 480;
+  const x = (workArea.x + workAreaSize.width)  - winW - 10;
+  const y =  workArea.y + 10;
+  detachedWin = new BrowserWindow({
+    width: winW, height: winH,
+    x, y,
+    alwaysOnTop:     true,
+    resizable:       false,
+    frame:           false,
+    transparent:     false,
+    skipTaskbar:     true,
+    icon:            appIcon,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  detachedWin.loadURL(`file://${path.join(__dirname, 'popup.html')}?detached=true&icon=${encodeURIComponent(icon22DataUrl)}`);
+  detachedWin.on('closed', () => { detachedWin = null; });
+  res.json({ ok: true });
+});
+
 httpApp.listen(3000, '127.0.0.1', () =>
   console.log('ClaudeOrb HTTP server listening on http://localhost:3000')
 );
@@ -322,6 +358,7 @@ function openLoginWindow() {
     width:  980,
     height: 720,
     title:  'Sign in to Claude',
+    icon:   appIcon,
     webPreferences: { nodeIntegration: false, contextIsolation: true, partition: 'persist:claudeai' },
   });
 
@@ -454,19 +491,22 @@ function scrapeUsage() {
 
     scrapeWin = new BrowserWindow({
       show: false,
+      icon: appIcon,
       webPreferences: { nodeIntegration: false, contextIsolation: true, partition: 'persist:claudeai' },
     });
 
     let settled = false;
+    let timeout = null;
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeout);
       if (scrapeWin && !scrapeWin.isDestroyed()) scrapeWin.destroy();
       scrapeWin = null;
       resolve(result);
     };
 
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       console.log('[ClaudeOrb] scrape timed out');
       finish(null);
     }, 20_000);
@@ -478,7 +518,6 @@ function scrapeUsage() {
         const txt = await scrapeWin.webContents.executeJavaScript('document.body.innerText');
         console.log('[ClaudeOrb] page text:', txt.slice(0, 1000));
         const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
-        clearTimeout(timeout);
         const parsed = JSON.parse(raw);
         console.log('[ClaudeOrb] scrape result:', raw.slice(0, 200));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
@@ -491,7 +530,6 @@ function scrapeUsage() {
           out.extra_usage = parsed.extra_usage;
         finish(Object.keys(out).length ? out : null);
       } catch (e) {
-        clearTimeout(timeout);
         console.log('[ClaudeOrb] scrape JS error:', e.message);
         finish(null);
       }
@@ -520,6 +558,7 @@ async function pollUsage() {
       session.savedAt   = new Date().toISOString();
       saveSession();
       console.log(`[ClaudeOrb] usage updated — 5h: ${data.five_hour?.utilization ?? '?'}%  7d: ${data.seven_day?.utilization ?? '?'}%`);
+      checkUsageThresholds(data);
     } else {
       console.log('[ClaudeOrb] poll returned no usable data');
     }
@@ -534,11 +573,79 @@ function startPolling() {
   pollTimer = setInterval(pollUsage, 30_000);
 }
 
+// ── Usage threshold notifications ─────────────────────────────────────────────
+
+const notifiedThresholds = {
+  five_hour_80:  false,
+  five_hour_100: false,
+  seven_day_80:  false,
+  seven_day_100: false,
+};
+// Reset all flags so notifications re-fire on next poll (testing)
+Object.keys(notifiedThresholds).forEach(k => { notifiedThresholds[k] = false; });
+
+function checkUsageThresholds(data) {
+  if (!Notification.isSupported()) return;
+
+  function notify(title, body) {
+    new Notification({ title, body, icon: appIcon }).show();
+  }
+
+  function fmtResets(val) {
+    if (!val) return '';
+    return ` — resets ${val}`;
+  }
+
+  const fh  = data.five_hour;
+  const sd  = data.seven_day;
+  const fhP = fh?.utilization ?? -1;
+  const sdP = sd?.utilization ?? -1;
+
+  // ── 5-hour session ────────────────────────────────────────────────────────
+  if (fhP >= 70) {
+    if (!notifiedThresholds.five_hour_100) {
+      notifiedThresholds.five_hour_100 = true;
+      notify('ClaudeOrb', `🚨 Session limit reached${fmtResets(fh?.resets_at)}`);
+    }
+  } else {
+    notifiedThresholds.five_hour_100 = false;
+  }
+
+  if (fhP >= 50 && fhP < 70) {
+    if (!notifiedThresholds.five_hour_80) {
+      notifiedThresholds.five_hour_80 = true;
+      notify('ClaudeOrb', `⚠️ Session at 50%${fmtResets(fh?.resets_at)}`);
+    }
+  } else if (fhP < 50) {
+    notifiedThresholds.five_hour_80 = false;
+  }
+
+  // ── 7-day weekly ──────────────────────────────────────────────────────────
+  if (sdP >= 70) {
+    if (!notifiedThresholds.seven_day_100) {
+      notifiedThresholds.seven_day_100 = true;
+      notify('ClaudeOrb', `🚨 Weekly limit reached${fmtResets(sd?.resets_at)}`);
+    }
+  } else {
+    notifiedThresholds.seven_day_100 = false;
+  }
+
+  if (sdP >= 50 && sdP < 70) {
+    if (!notifiedThresholds.seven_day_80) {
+      notifiedThresholds.seven_day_80 = true;
+      notify('ClaudeOrb', `⚠️ Weekly usage at 50%${fmtResets(sd?.resets_at)}`);
+    }
+  } else if (sdP < 50) {
+    notifiedThresholds.seven_day_80 = false;
+  }
+}
+
 function showExpiredNotification() {
   if (!Notification.isSupported()) return;
   const n = new Notification({
     title: 'ClaudeOrb',
     body:  'Session expired — click to re-login',
+    icon:  appIcon,
   });
   n.on('click', () => openLoginWindow());
   n.show();
@@ -547,8 +654,9 @@ function showExpiredNotification() {
 // ── Menubar ───────────────────────────────────────────────────────────────────
 
 const mb = menubar({
-  index:  `file://${path.join(__dirname, 'popup.html')}`,
+  index:  `file://${path.join(__dirname, 'popup.html')}?icon=${encodeURIComponent(icon22DataUrl)}`,
   tooltip: 'ClaudeOrb',
+  icon:   trayIcon,
   browserWindow: {
     width:           320,
     height:          460,
@@ -560,14 +668,21 @@ const mb = menubar({
     },
   },
   showOnRightClick: false,
+  hideOnClickOutside: false,
+  hideOnClick: false,
   preloadWindow:    true,
 });
 
 mb.on('ready', () => {
-  mb.tray.setTitle('⚡');
+  // Set tray icon explicitly after tray exists
+  trayIcon.setTemplateImage(false);
+  mb.tray.setImage(trayIcon);
 
-  // Hide from Dock — menubar-only app
-  if (app.dock) app.dock.hide();
+  // Dock icon
+  if (app.dock) {
+    app.dock.setIcon(appIcon);
+    app.dock.hide();
+  }
 
   // Right-click shows a minimal context menu with Quit
   const contextMenu = Menu.buildFromTemplate([
@@ -576,6 +691,17 @@ mb.on('ready', () => {
     { label: 'Quit ClaudeOrb', click: () => app.quit() },
   ]);
   mb.tray.on('right-click', () => mb.tray.popUpContextMenu(contextMenu));
+
+  // Keep popup open when it loses focus (blur refocus)
+  mb.on('after-show', () => {
+    if (mb.window) {
+      mb.window.on('blur', () => {
+        if (mb.window && !mb.window.isDestroyed()) {
+          mb.window.focus();
+        }
+      });
+    }
+  });
 
   if (session.cookies) {
     console.log('[ClaudeOrb] session found — starting poll immediately');
