@@ -312,16 +312,12 @@ httpApp.post('/open-detached', (_req, res) => {
   res.json({ ok: true });
 });
 
-httpApp.listen(3000, '127.0.0.1', () =>
-  console.log('ClaudeOrb HTTP server listening on http://localhost:3000')
-);
+httpApp.listen(3000, '127.0.0.1');
 
 // ── Login window ──────────────────────────────────────────────────────────────
 
 let loginWin        = null;
 let sessionCaptured = false;
-
-// ── Login window ──────────────────────────────────────────────────────────────
 
 async function checkLoginState() {
   if (sessionCaptured) return;
@@ -329,24 +325,16 @@ async function checkLoginState() {
 
   try {
     const rawCookies = await loginWin.webContents.session.cookies.get({ url: 'https://claude.ai' });
-    console.log(`[ClaudeOrb] cookies for claude.ai: ${rawCookies.map(c => c.name).join(', ') || '(none)'}`);
-
     const hasCookies = rawCookies.some(c => c.name.startsWith('sessionKey') || c.name === '__Secure-next-auth.session-token' || c.name.includes('session'));
-    if (!hasCookies) {
-      console.log('[ClaudeOrb] no session cookie yet — waiting for login');
-      return;
-    }
+    if (!hasCookies) return;
 
     sessionCaptured    = true;
     session.cookies    = 'captured';
     session.savedAt    = new Date().toISOString();
     saveSession();
-    console.log('[ClaudeOrb] session detected — closing login window and starting polling');
     if (loginWin && !loginWin.isDestroyed()) loginWin.close();
     startPolling();
-  } catch (err) {
-    console.log(`[ClaudeOrb] checkLoginState error: ${err.message}`);
-  }
+  } catch { /* ignore */ }
 }
 
 function openLoginWindow() {
@@ -362,9 +350,7 @@ function openLoginWindow() {
     webPreferences: { nodeIntegration: false, contextIsolation: true, partition: 'persist:claudeai' },
   });
 
-  // Check on full page load (covers initial load and hard navigations)
   loginWin.webContents.on('did-finish-load', () => {
-    console.log('[ClaudeOrb] login window did-finish-load');
     setTimeout(checkLoginState, 500);
   });
   // Also check on SPA navigations (claude.ai uses React Router)
@@ -506,20 +492,14 @@ function scrapeUsage() {
       resolve(result);
     };
 
-    timeout = setTimeout(() => {
-      console.log('[ClaudeOrb] scrape timed out');
-      finish(null);
-    }, 20_000);
+    timeout = setTimeout(() => finish(null), 20_000);
 
     scrapeWin.webContents.on('did-finish-load', async () => {
       try {
         await new Promise(r => setTimeout(r, 3000));
-        console.log('[ClaudeOrb] scraper URL:', scrapeWin.webContents.getURL());
-        const txt = await scrapeWin.webContents.executeJavaScript('document.body.innerText');
-        console.log('[ClaudeOrb] page text:', txt.slice(0, 1000));
+        if (settled) return; // 20s timeout may have fired during the wait
         const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
         const parsed = JSON.parse(raw);
-        console.log('[ClaudeOrb] scrape result:', raw.slice(0, 200));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
         const out = {};
         if (parsed.five_hour !== null && parsed.five_hour !== undefined)
@@ -530,7 +510,6 @@ function scrapeUsage() {
           out.extra_usage = parsed.extra_usage;
         finish(Object.keys(out).length ? out : null);
       } catch (e) {
-        console.log('[ClaudeOrb] scrape JS error:', e.message);
         finish(null);
       }
     });
@@ -541,11 +520,9 @@ function scrapeUsage() {
 }
 
 async function pollUsage() {
-  console.log(`[ClaudeOrb] polling usage at ${new Date().toISOString()}`);
   try {
     const data = await scrapeUsage();
     if (data === 'auth_expired') {
-      console.log('[ClaudeOrb] session expired — clearing credentials');
       session.cookies  = '';
       session.usageUrl = '';
       saveSession();
@@ -557,14 +534,9 @@ async function pollUsage() {
       session.usageData = data;
       session.savedAt   = new Date().toISOString();
       saveSession();
-      console.log(`[ClaudeOrb] usage updated — 5h: ${data.five_hour?.utilization ?? '?'}%  7d: ${data.seven_day?.utilization ?? '?'}%`);
       checkUsageThresholds(data);
-    } else {
-      console.log('[ClaudeOrb] poll returned no usable data');
     }
-  } catch (err) {
-    console.log('[ClaudeOrb] pollUsage error:', err.message);
-  }
+  } catch { /* ignore */ }
 }
 
 function startPolling() {
@@ -581,8 +553,6 @@ const notifiedThresholds = {
   seven_day_80:  false,
   seven_day_100: false,
 };
-// Reset all flags so notifications re-fire on next poll (testing)
-Object.keys(notifiedThresholds).forEach(k => { notifiedThresholds[k] = false; });
 
 function checkUsageThresholds(data) {
   if (!Notification.isSupported()) return;
@@ -602,7 +572,7 @@ function checkUsageThresholds(data) {
   const sdP = sd?.utilization ?? -1;
 
   // ── 5-hour session ────────────────────────────────────────────────────────
-  if (fhP >= 70) {
+  if (fhP >= 100) {
     if (!notifiedThresholds.five_hour_100) {
       notifiedThresholds.five_hour_100 = true;
       notify('ClaudeOrb', `🚨 Session limit reached${fmtResets(fh?.resets_at)}`);
@@ -611,17 +581,17 @@ function checkUsageThresholds(data) {
     notifiedThresholds.five_hour_100 = false;
   }
 
-  if (fhP >= 50 && fhP < 70) {
+  if (fhP >= 80 && fhP < 100) {
     if (!notifiedThresholds.five_hour_80) {
       notifiedThresholds.five_hour_80 = true;
-      notify('ClaudeOrb', `⚠️ Session at 50%${fmtResets(fh?.resets_at)}`);
+      notify('ClaudeOrb', `⚠️ Session at 80%${fmtResets(fh?.resets_at)}`);
     }
-  } else if (fhP < 50) {
+  } else if (fhP < 80) {
     notifiedThresholds.five_hour_80 = false;
   }
 
   // ── 7-day weekly ──────────────────────────────────────────────────────────
-  if (sdP >= 70) {
+  if (sdP >= 100) {
     if (!notifiedThresholds.seven_day_100) {
       notifiedThresholds.seven_day_100 = true;
       notify('ClaudeOrb', `🚨 Weekly limit reached${fmtResets(sd?.resets_at)}`);
@@ -630,12 +600,12 @@ function checkUsageThresholds(data) {
     notifiedThresholds.seven_day_100 = false;
   }
 
-  if (sdP >= 50 && sdP < 70) {
+  if (sdP >= 80 && sdP < 100) {
     if (!notifiedThresholds.seven_day_80) {
       notifiedThresholds.seven_day_80 = true;
-      notify('ClaudeOrb', `⚠️ Weekly usage at 50%${fmtResets(sd?.resets_at)}`);
+      notify('ClaudeOrb', `⚠️ Weekly usage at 80%${fmtResets(sd?.resets_at)}`);
     }
-  } else if (sdP < 50) {
+  } else if (sdP < 80) {
     notifiedThresholds.seven_day_80 = false;
   }
 }
@@ -704,13 +674,18 @@ mb.on('ready', () => {
   });
 
   if (session.cookies) {
-    console.log('[ClaudeOrb] session found — starting poll immediately');
     sessionCaptured = true;
     startPolling();
   } else {
-    console.log('[ClaudeOrb] no session — opening login window');
     openLoginWindow();
   }
+});
+
+// ── Quit cleanup ──────────────────────────────────────────────────────────────
+
+app.on('before-quit', () => {
+  if (pollTimer)  { clearInterval(pollTimer); pollTimer = null; }
+  if (scrapeWin && !scrapeWin.isDestroyed()) { scrapeWin.destroy(); scrapeWin = null; }
 });
 
 // ── Auto-launch ───────────────────────────────────────────────────────────────
