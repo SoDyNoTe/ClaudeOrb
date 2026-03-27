@@ -15,8 +15,13 @@ const AutoLaunch                                       = require('auto-launch');
 const iconPath      = path.join(__dirname, 'assets', 'icon.png');
 const appIcon       = nativeImage.createFromPath(iconPath);
 const trayIcon      = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-const icon22Base64  = fs.readFileSync(path.join(__dirname, 'assets', 'icon22.png')).toString('base64');
-const icon22DataUrl = `data:image/png;base64,${icon22Base64}`;
+let icon22DataUrl = '';
+try {
+  const icon22Base64 = fs.readFileSync(path.join(__dirname, 'assets', 'icon22.png')).toString('base64');
+  icon22DataUrl = `data:image/png;base64,${icon22Base64}`;
+} catch (e) {
+  console.error('Failed to read icon22.png:', e.message);
+}
 
 // ── Session persistence ───────────────────────────────────────────────────────
 
@@ -548,8 +553,10 @@ function startPolling() {
 // ── Usage threshold notifications ─────────────────────────────────────────────
 
 const notifiedThresholds = {
+  five_hour_50:  false,
   five_hour_80:  false,
   five_hour_100: false,
+  seven_day_50:  false,
   seven_day_80:  false,
   seven_day_100: false,
 };
@@ -558,10 +565,15 @@ function checkUsageThresholds(data) {
   if (!Notification.isSupported()) return;
 
   function notify(title, body) {
-    new Notification({ title, body, icon: appIcon }).show();
+    new Notification({ title, body, icon: path.join(__dirname, 'assets', 'icon22.png') }).show();
   }
 
-  function fmtResets(val) {
+  function fmtResetsSession(val) {
+    if (!val) return '';
+    return ` — resets in ${val}`;
+  }
+
+  function fmtResetsWeekly(val) {
     if (!val) return '';
     return ` — resets ${val}`;
   }
@@ -575,7 +587,7 @@ function checkUsageThresholds(data) {
   if (fhP >= 100) {
     if (!notifiedThresholds.five_hour_100) {
       notifiedThresholds.five_hour_100 = true;
-      notify('ClaudeOrb', `🚨 Session limit reached${fmtResets(fh?.resets_at)}`);
+      notify('Session Limit Reached', `Your 5-hour session is full${fmtResetsSession(fh?.resets_at)}`);
     }
   } else {
     notifiedThresholds.five_hour_100 = false;
@@ -584,17 +596,26 @@ function checkUsageThresholds(data) {
   if (fhP >= 80 && fhP < 100) {
     if (!notifiedThresholds.five_hour_80) {
       notifiedThresholds.five_hour_80 = true;
-      notify('ClaudeOrb', `⚠️ Session at 80%${fmtResets(fh?.resets_at)}`);
+      notify('Session Warning', `You've used 80% of your 5-hour session${fmtResetsSession(fh?.resets_at)}`);
     }
   } else if (fhP < 80) {
     notifiedThresholds.five_hour_80 = false;
+  }
+
+  if (fhP >= 50 && fhP < 80) {
+    if (!notifiedThresholds.five_hour_50) {
+      notifiedThresholds.five_hour_50 = true;
+      notify('Session at 50%', `You've used half your 5-hour session${fmtResetsSession(fh?.resets_at)}`);
+    }
+  } else if (fhP < 50) {
+    notifiedThresholds.five_hour_50 = false;
   }
 
   // ── 7-day weekly ──────────────────────────────────────────────────────────
   if (sdP >= 100) {
     if (!notifiedThresholds.seven_day_100) {
       notifiedThresholds.seven_day_100 = true;
-      notify('ClaudeOrb', `🚨 Weekly limit reached${fmtResets(sd?.resets_at)}`);
+      notify('Weekly Limit Reached', `Your weekly Claude limit is full${fmtResetsWeekly(sd?.resets_at)}`);
     }
   } else {
     notifiedThresholds.seven_day_100 = false;
@@ -603,10 +624,19 @@ function checkUsageThresholds(data) {
   if (sdP >= 80 && sdP < 100) {
     if (!notifiedThresholds.seven_day_80) {
       notifiedThresholds.seven_day_80 = true;
-      notify('ClaudeOrb', `⚠️ Weekly usage at 80%${fmtResets(sd?.resets_at)}`);
+      notify('Weekly Warning', `You've used 80% of your weekly limit${fmtResetsWeekly(sd?.resets_at)}`);
     }
   } else if (sdP < 80) {
     notifiedThresholds.seven_day_80 = false;
+  }
+
+  if (sdP >= 50 && sdP < 80) {
+    if (!notifiedThresholds.seven_day_50) {
+      notifiedThresholds.seven_day_50 = true;
+      notify('Weekly Usage at 50%', `You've used half your weekly Claude limit${fmtResetsWeekly(sd?.resets_at)}`);
+    }
+  } else if (sdP < 50) {
+    notifiedThresholds.seven_day_50 = false;
   }
 }
 
@@ -615,7 +645,7 @@ function showExpiredNotification() {
   const n = new Notification({
     title: 'ClaudeOrb',
     body:  'Session expired — click to re-login',
-    icon:  appIcon,
+    icon:  path.join(__dirname, 'assets', 'icon22.png'),
   });
   n.on('click', () => openLoginWindow());
   n.show();
