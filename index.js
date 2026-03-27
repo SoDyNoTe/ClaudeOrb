@@ -547,7 +547,7 @@ async function pollUsage() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollUsage(); // immediate poll on start
-  pollTimer = setInterval(pollUsage, 30_000);
+  pollTimer = setInterval(pollUsage, 15_000);
 }
 
 // ── Usage threshold notifications ─────────────────────────────────────────────
@@ -562,10 +562,10 @@ const notifiedThresholds = {
 };
 
 function checkUsageThresholds(data) {
-  if (!Notification.isSupported()) return;
-
   function notify(title, body) {
-    new Notification({ title, body, icon: path.join(__dirname, 'assets', 'icon22.png') }).show();
+    try {
+      new Notification({ title, body, icon: path.join(__dirname, 'assets', 'icon.icns') }).show();
+    } catch { /* ignore if notifications unsupported */ }
   }
 
   function fmtResetsSession(val) {
@@ -578,16 +578,15 @@ function checkUsageThresholds(data) {
     return ` — resets ${val}`;
   }
 
-  const fh  = data.five_hour;
-  const sd  = data.seven_day;
-  const fhP = fh?.utilization ?? -1;
-  const sdP = sd?.utilization ?? -1;
-
+  const fhP     = typeof data.five_hour === 'object' ? data.five_hour?.utilization ?? -1 : data.five_hour ?? -1;
+  const sdP     = typeof data.seven_day === 'object' ? data.seven_day?.utilization ?? -1 : data.seven_day ?? -1;
+  const fhResets = data.five_hour_resets || data.five_hour?.resets_at || null;
+  const sdResets = data.seven_day_resets || data.seven_day?.resets_at || null;
   // ── 5-hour session ────────────────────────────────────────────────────────
   if (fhP >= 100) {
     if (!notifiedThresholds.five_hour_100) {
       notifiedThresholds.five_hour_100 = true;
-      notify('Session Limit Reached', `Your 5-hour session is full${fmtResetsSession(fh?.resets_at)}`);
+      notify('Session Limit Reached', `Your 5-hour session is full${fmtResetsSession(fhResets)}`);
     }
   } else {
     notifiedThresholds.five_hour_100 = false;
@@ -596,7 +595,7 @@ function checkUsageThresholds(data) {
   if (fhP >= 80 && fhP < 100) {
     if (!notifiedThresholds.five_hour_80) {
       notifiedThresholds.five_hour_80 = true;
-      notify('Session Warning', `You've used 80% of your 5-hour session${fmtResetsSession(fh?.resets_at)}`);
+      notify('Session Warning', `You've used 80% of your 5-hour session${fmtResetsSession(fhResets)}`);
     }
   } else if (fhP < 80) {
     notifiedThresholds.five_hour_80 = false;
@@ -605,7 +604,7 @@ function checkUsageThresholds(data) {
   if (fhP >= 50 && fhP < 80) {
     if (!notifiedThresholds.five_hour_50) {
       notifiedThresholds.five_hour_50 = true;
-      notify('Session at 50%', `You've used half your 5-hour session${fmtResetsSession(fh?.resets_at)}`);
+      notify('Session at 50%', `You've used half your 5-hour session${fmtResetsSession(fhResets)}`);
     }
   } else if (fhP < 50) {
     notifiedThresholds.five_hour_50 = false;
@@ -615,7 +614,7 @@ function checkUsageThresholds(data) {
   if (sdP >= 100) {
     if (!notifiedThresholds.seven_day_100) {
       notifiedThresholds.seven_day_100 = true;
-      notify('Weekly Limit Reached', `Your weekly Claude limit is full${fmtResetsWeekly(sd?.resets_at)}`);
+      notify('Weekly Limit Reached', `Your weekly Claude limit is full${fmtResetsWeekly(sdResets)}`);
     }
   } else {
     notifiedThresholds.seven_day_100 = false;
@@ -624,7 +623,7 @@ function checkUsageThresholds(data) {
   if (sdP >= 80 && sdP < 100) {
     if (!notifiedThresholds.seven_day_80) {
       notifiedThresholds.seven_day_80 = true;
-      notify('Weekly Warning', `You've used 80% of your weekly limit${fmtResetsWeekly(sd?.resets_at)}`);
+      notify('Weekly Warning', `You've used 80% of your weekly limit${fmtResetsWeekly(sdResets)}`);
     }
   } else if (sdP < 80) {
     notifiedThresholds.seven_day_80 = false;
@@ -633,7 +632,7 @@ function checkUsageThresholds(data) {
   if (sdP >= 50 && sdP < 80) {
     if (!notifiedThresholds.seven_day_50) {
       notifiedThresholds.seven_day_50 = true;
-      notify('Weekly Usage at 50%', `You've used half your weekly Claude limit${fmtResetsWeekly(sd?.resets_at)}`);
+      notify('Weekly Usage at 50%', `You've used half your weekly Claude limit${fmtResetsWeekly(sdResets)}`);
     }
   } else if (sdP < 50) {
     notifiedThresholds.seven_day_50 = false;
@@ -645,7 +644,7 @@ function showExpiredNotification() {
   const n = new Notification({
     title: 'ClaudeOrb',
     body:  'Session expired — click to re-login',
-    icon:  path.join(__dirname, 'assets', 'icon22.png'),
+    icon:  path.join(__dirname, 'assets', 'icon.icns'),
   });
   n.on('click', () => openLoginWindow());
   n.show();
@@ -674,13 +673,15 @@ const mb = menubar({
 });
 
 mb.on('ready', () => {
+  app.setAppUserModelId('com.claudeorb.app');
+
   // Set tray icon explicitly after tray exists
   trayIcon.setTemplateImage(false);
   mb.tray.setImage(trayIcon);
 
   // Dock icon
   if (app.dock) {
-    app.dock.setIcon(appIcon);
+    app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.icns')));
     app.dock.hide();
   }
 
