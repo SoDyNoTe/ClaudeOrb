@@ -5,6 +5,9 @@ usage without having to open a browser and dig through settings. If you use
 Claude heavily, especially with Claude Code, you know how annoying it is to
 randomly hit a rate limit mid-session with no warning.
 
+CURRENTLY ITS ONLY WORKING ON MAC, BUT SUPPORT FOR OTHER OS WILL BE AVAILABLE 
+SOON.
+
 ## How it works
 
 The tricky part about building this was that Claude's usage data isn't stored
