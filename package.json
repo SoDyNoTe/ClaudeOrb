@@ -1,5 +1,6 @@
 {
-  "name": "claude-companion",
+  "name": "claudeorb",
+  "productName": "ClaudeOrb",
   "version": "1.0.0",
   "description": "Mac menubar companion app for Claude Code usage stats",
   "author": "Alexander Herbst",
@@ -9,6 +10,8 @@
     "build": "electron-builder --mac"
   },
   "build": {
+    "appId": "com.claudeorb.app",
+    "productName": "ClaudeOrb",
     "mac": {
       "icon": "assets/icon.icns"
     }
