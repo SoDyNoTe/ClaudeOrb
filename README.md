@@ -43,8 +43,9 @@ macOS might warn you when opening it for the first time. Right-click the app
 and select Open to bypass this.
 
 ## What's next
+I'm planning a browser extension for Chrome and Edge, and a Windows version. 
 
-I'm looking at turning this into a physical desk display, a small screen that
+I'm also looking at turning this into a physical desk display, a small screen that
 sits next to your monitor and shows your usage in real time. If there's enough
 interest I'll build it out. Let me know.
 
