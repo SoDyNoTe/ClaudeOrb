@@ -43,16 +43,25 @@ When you first open the app, macOS will show a warning saying
 yet signed with an Apple Developer certificate. It does not mean
 the app is unsafe.
 
-To bypass this, open Terminal and run:
+You can bypass this in one of three ways:
 
+**Option 1 - Terminal (easiest):**
+Open Terminal and run:
 ```
 xattr -dr com.apple.quarantine /Applications/ClaudeOrb.app
 ```
+Then open the app normally.
 
-Then open the app normally. You only need to do this once.
+**Option 2 - Privacy & Security settings:**
+Go to System Settings, then Privacy & Security.
+Scroll down and you will see a message saying ClaudeOrb was blocked.
+Click Open Anyway.
 
-Alternatively you can right-click the app, select Open, and click
-Open again in the dialog that appears.
+**Option 3 - Right-click:**
+Right-click the app in your Applications folder, select Open,
+then click Open in the dialog that appears.
+
+You only need to do this once.
 
 On first launch a login window will open. Sign into your Claude.ai account
 and it will close by itself. That's it.
