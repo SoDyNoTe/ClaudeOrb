@@ -1,57 +1,49 @@
-# ClaudeOrb Companion
+# ClaudeOrb
 
-**Local companion app that powers ClaudeOrb's Code and Trends tabs**
+A macOS menubar app that tracks your Claude.ai usage in real time.
 
-The companion app runs silently in your Mac menubar, reads your Claude Code session data from `~/.claude/projects/`, and serves it to the [ClaudeOrb Chrome extension](https://github.com/SoDyNoTe/claude-orb) over a local HTTP API.
-
----
+## Features
+- Live 5-hour session and 7-day weekly usage tracking
+- Color coded usage rings (green/orange/red)
+- Reset timers for session and weekly limits
+- Collapsible extra usage / overage tracking
+- Claude Code tab - daily tokens, estimated spend, lines written, files edited, streak
+- Weekly spend trends chart
+- Minimal view with cycling metrics
+- Smart notifications at 50%, 80%, and 100% usage
+- Detachable floating window that stays on top
+- Auto-polls every 15 seconds
+- Remembers your session - only need to log in once
 
 ## Requirements
-
 - macOS
 - Node.js 18+
+- A Claude.ai account (Pro plan recommended)
 
 ## Installation
+### Option 1 - Download DMG
+Download the latest release from the releases page and drag to Applications.
 
-```bash
+### Option 2 - Run from source
+```
+git clone https://github.com/SoDyNoTe/claude-companion.git
+cd claude-companion
 npm install
 npm start
 ```
 
-The app appears as **⚡** in your menubar. It starts automatically on login.
+## First Launch
+On first launch a login window will open. Log into your Claude.ai account
+and the window will close automatically. The app will start tracking your
+usage immediately.
 
----
+## Building
+```
+npm run build
+```
 
-## What it unlocks in ClaudeOrb
-
-### Code tab
-Real-time stats for the current calendar day:
-- Total tokens used
-- Estimated cost (calculated from Anthropic's published pricing)
-- Lines of code written
-- Files edited
-- Top model in use
-
-### Trends tab
-Historical usage charts pulled from `GET /trends` and `GET /trends/30`:
-- Last 7 days — bar chart with daily token and cost breakdown
-- Last 30 days — extended view for monthly usage patterns
-
----
-
-## HTTP API
-
-| Endpoint | Description |
-|---|---|
-| `GET /health` | `{ "status": "ok", "version": "1.0.0" }` |
-| `GET /stats` | Today + this week stats |
-| `GET /trends` | Last 7 calendar days |
-| `GET /trends/30` | Last 30 calendar days |
-
-All responses include `Access-Control-Allow-Origin: *` so the extension can reach the API directly.
-
----
-
-## License
-
-MIT
+## Tech Stack
+- Electron
+- Node.js
+- Express
+- electron-builder

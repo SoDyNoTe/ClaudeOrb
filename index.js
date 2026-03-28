@@ -291,19 +291,28 @@ httpApp.post('/trigger-poll', (_req, res) => {
 });
 
 let detachedWin = null;
+let detachedWinPos = null; // { x, y } — last saved position
 
 httpApp.post('/open-detached', (_req, res) => {
   if (detachedWin && !detachedWin.isDestroyed()) {
     detachedWin.focus();
     return res.json({ ok: true });
   }
-  const { workAreaSize, workArea } = screen.getPrimaryDisplay();
-  const winW = 340, winH = 480;
-  const x = (workArea.x + workAreaSize.width)  - winW - 10;
-  const y =  workArea.y + 10;
+  const winW = 360, winH = 480;
+  let x, y;
+  if (detachedWinPos) {
+    ({ x, y } = detachedWinPos);
+  } else {
+    const cursor   = screen.getCursorScreenPoint();
+    const display  = screen.getDisplayNearestPoint(cursor);
+    const { workArea } = display;
+    x = (workArea.x + workArea.width)  - winW - 10;
+    y =  workArea.y + 10;
+  }
   detachedWin = new BrowserWindow({
     width: winW, height: winH,
     x, y,
+    useContentSize:  true,
     alwaysOnTop:     true,
     resizable:       false,
     frame:           false,
@@ -313,6 +322,12 @@ httpApp.post('/open-detached', (_req, res) => {
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   detachedWin.loadURL(`file://${path.join(__dirname, 'popup.html')}?detached=true&icon=${encodeURIComponent(icon22DataUrl)}`);
+  detachedWin.on('moved', () => {
+    if (detachedWin && !detachedWin.isDestroyed()) {
+      const [wx, wy] = detachedWin.getPosition();
+      detachedWinPos = { x: wx, y: wy };
+    }
+  });
   detachedWin.on('closed', () => { detachedWin = null; });
   res.json({ ok: true });
 });
