@@ -33,17 +33,29 @@ You only have to log in once. After that it remembers your session.
 - Detachable floating window you can pin next to your work
 - Stays open even when you click away
 
-## Download
+## Installation
 
-Download the latest .dmg from the releases page, open it, drag ClaudeOrb
-to your Applications folder and launch it.
+Download the .dmg file from the releases page, open it, and drag
+ClaudeOrb to your Applications folder.
+
+When you first open the app, macOS will show a warning saying
+"ClaudeOrb.app cannot be opened". This is because the app is not
+yet signed with an Apple Developer certificate. It does not mean
+the app is unsafe.
+
+To bypass this, open Terminal and run:
+
+```
+xattr -dr com.apple.quarantine /Applications/ClaudeOrb.app
+```
+
+Then open the app normally. You only need to do this once.
+
+Alternatively you can right-click the app, select Open, and click
+Open again in the dialog that appears.
 
 On first launch a login window will open. Sign into your Claude.ai account
 and it will close by itself. That's it.
-
-Note: Because the app isn't signed with an Apple Developer certificate yet,
-macOS might warn you when opening it for the first time. Right-click the app
-and select Open to bypass this.
 
 ## What's next
 I'm planning a browser extension for Chrome and Edge, and a Windows version. 
