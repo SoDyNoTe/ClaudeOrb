@@ -285,6 +285,11 @@ httpApp.post('/trigger-login', (_req, res) => {
   res.json({ ok: true });
 });
 
+httpApp.post('/hide-window', (_req, res) => {
+  mb.hideWindow();
+  res.json({ ok: true });
+});
+
 httpApp.post('/trigger-poll', (_req, res) => {
   pollUsage();
   res.json({ ok: true });
@@ -345,7 +350,7 @@ async function checkLoginState() {
 
   try {
     const rawCookies = await loginWin.webContents.session.cookies.get({ url: 'https://claude.ai' });
-    const hasCookies = rawCookies.some(c => c.name.startsWith('sessionKey') || c.name === '__Secure-next-auth.session-token' || c.name.includes('session'));
+    const hasCookies = rawCookies.some(c => c.name === 'sessionKey');
     if (!hasCookies) return;
 
     sessionCaptured    = true;
@@ -354,6 +359,13 @@ async function checkLoginState() {
     saveSession();
     if (loginWin && !loginWin.isDestroyed()) loginWin.close();
     startPolling();
+    pollUsage().then(() => {
+      setTimeout(() => {
+        if (mb.window && !mb.window.isDestroyed()) {
+          mb.window.webContents.reload();
+        }
+      }, 500);
+    });
   } catch { /* ignore */ }
 }
 
@@ -725,6 +737,7 @@ mb.on('ready', () => {
   } else {
     openLoginWindow();
   }
+
 });
 
 // ── Quit cleanup ──────────────────────────────────────────────────────────────

@@ -265,32 +265,25 @@
   .extra-val   { font-size: 12px; font-weight: 600; color: var(--amber); }
   .badge-green { font-size: 11px; font-weight: 600; color: var(--green); }
 
-  /* ── Connect card ── */
-  .connect-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 14px;
-    text-align: center;
-    margin-bottom: 8px;
-  }
-  .connect-icon { font-size: 28px; margin-bottom: 8px; }
-  .connect-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-  .connect-desc { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
-  .btn-connect {
-    display: inline-block;
-    background: var(--amber);
-    color: #000;
+  /* ── Connecting card ── */
+  .connecting-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px 14px;
+    color: var(--muted);
     font-size: 12px;
-    font-weight: 600;
-    padding: 7px 20px;
-    border-radius: 20px;
-    border: none;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
   }
-  .btn-connect:hover { background: var(--amber2); }
-  .btn-connect:active { transform: scale(0.97); }
+  .connecting-spinner {
+    width: 22px; height: 22px;
+    border: 2px solid #333;
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Stat list (Code tab) ── */
   #pane-code {
@@ -541,7 +534,7 @@
           <path d="M9.5 1.5L5.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
         </svg>
       </button>
-      <button class="btn-close" onclick="window.close()" title="Close">×</button>
+      <button class="btn-close" id="btn-close" title="Close">×</button>
     </div>
   </div>
 
@@ -559,12 +552,10 @@
     <!-- ── Tab: Usage ── -->
     <div class="pane active" id="pane-usage">
 
-      <!-- No-session connect card -->
-      <div id="connect-card" class="connect-card" style="display:none">
-        <div class="connect-icon">🔗</div>
-        <div class="connect-title">Connect to Claude.ai</div>
-        <div class="connect-desc">Sign in to see your real-time<br>rate-limit usage from Claude.ai</div>
-        <button class="btn-connect" id="btn-connect">Connect</button>
+      <!-- No-session connecting card -->
+      <div id="connect-card" class="connecting-card" style="display:none">
+        <div class="connecting-spinner"></div>
+        <span>Connecting to Claude.ai...</span>
       </div>
 
       <!-- SESSION · 5-HOUR -->
@@ -791,6 +782,11 @@ const isDetached = params.get('detached') === 'true';
 if (isDetached) {
   document.querySelector('.header').classList.add('draggable');
   document.getElementById('btn-detach').style.display = 'none';
+  document.getElementById('btn-close').addEventListener('click', () => window.close());
+} else {
+  document.getElementById('btn-close').addEventListener('click', () => {
+    fetch('http://localhost:3000/hide-window', { method: 'POST' }).catch(() => {});
+  });
 }
 document.getElementById('btn-detach').addEventListener('click', () => {
   fetch('http://localhost:3000/open-detached', { method: 'POST' }).catch(() => {});
@@ -1135,13 +1131,6 @@ document.getElementById('minimal-tap').addEventListener('click', () => {
     renderMinimal();
     val.style.opacity = '1';
   }, 100);
-});
-
-// ── Connect button ────────────────────────────────────────────────────────────
-document.getElementById('btn-connect').addEventListener('click', async () => {
-  try {
-    await fetch('http://localhost:3000/trigger-login', { method: 'POST' });
-  } catch { /* ignore */ }
 });
 
 // ── Footer tick ───────────────────────────────────────────────────────────────
