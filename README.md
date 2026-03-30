@@ -8,7 +8,7 @@ I built ClaudeOrb because I wanted a simple, clean way to see my Claude.ai usage
 
 ---
 
-## Desktop App (macOS)
+## macOS App
 
 ClaudeOrb is a macOS menubar app that quietly monitors your Claude.ai usage in the background.
 
