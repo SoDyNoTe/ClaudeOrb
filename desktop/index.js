@@ -567,6 +567,15 @@ async function pollUsage() {
       session.savedAt   = new Date().toISOString();
       saveSession();
       checkUsageThresholds(data);
+      // Sync tray title to data arrival
+      if (mb.tray) {
+        const fhP = typeof data.five_hour === 'object' ? data.five_hour?.utilization : data.five_hour;
+        const sdP = typeof data.seven_day === 'object' ? data.seven_day?.utilization : data.seven_day;
+        const parts = [];
+        if (fhP != null) parts.push(`${fhP}%`);
+        if (sdP != null) parts.push(`${sdP}%`);
+        mb.tray.setTitle(parts.length ? parts.join(' · ') : '');
+      }
     }
   } catch { /* ignore */ }
 }
