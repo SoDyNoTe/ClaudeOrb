@@ -155,11 +155,34 @@ async function maybeNotify(newData, prevData) {
 
 // ─── Shared data handler (used by both intercept and poller) ─────────────────
 
-async function applyUsageData(newData) {
+/**
+ * @param {object} newData
+ * @param {'intercept'|'poller'} source
+ *   intercept — data came directly from the page's fetch; always trusted.
+ *   poller    — data came from background service worker fetch; only applied
+ *               when there is no existing data or resets_at changed (new window).
+ *               This prevents the poller overwriting fresher intercept data with
+ *               a stale cached response.
+ */
+async function applyUsageData(newData, source = 'poller') {
   const { usageData: prevData } = await browserAPI.storage.local.get('usageData');
+
+  if (source === 'poller' && prevData) {
+    const prevResets = prevData.five_hour?.resets_at ?? null;
+    const newResets  = newData.five_hour?.resets_at  ?? null;
+    // Only let the poller win when the session window has changed (or resets_at is absent on both)
+    if (prevResets === newResets && prevResets !== null) return;
+  }
+
   await browserAPI.storage.local.set({ usageData: newData, updatedAt: Date.now() });
   updateBadge(newData.five_hour?.utilization ?? 0);
   await maybeNotify(newData, prevData);
+}
+
+/** Reads stored utilization and refreshes the badge — keeps badge in sync even when no new data arrives. */
+async function refreshBadgeFromStorage() {
+  const { usageData } = await browserAPI.storage.local.get('usageData');
+  updateBadge(usageData?.five_hour?.utilization ?? 0);
 }
 
 // ─── Companion app poller (localhost:3000) ────────────────────────────────────
@@ -217,7 +240,7 @@ async function pollCodeStats() {
 
 const USAGE_URL    = 'https://claude.ai/api/usage';
 const ALARM_NAME   = 'claude-usage-poll';
-const POLL_MINUTES = 1; // alarms API uses minutes
+const POLL_MINUTES = 0.25; // every 15 seconds
 
 async function pollUsage() {
   try {
@@ -228,7 +251,7 @@ async function pollUsage() {
     if (!response.ok) return;
     const data = await response.json();
     if (!data || (data.five_hour === undefined && data.seven_day === undefined)) return;
-    await applyUsageData(data);
+    await applyUsageData(data, 'poller');
   } catch { /* service worker fetch failed — will retry on next alarm */ }
 }
 
@@ -236,11 +259,13 @@ async function pollUsage() {
 browserAPI.alarms.create(ALARM_NAME,         { periodInMinutes: POLL_MINUTES });
 browserAPI.alarms.create('code-stats-poll',  { periodInMinutes: 0.5 });
 browserAPI.alarms.create('keepalive',        { periodInMinutes: 0.4 });
+browserAPI.alarms.create('badge-refresh',    { periodInMinutes: 0.25 });
 
 browserAPI.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME)        pollUsage();
   if (alarm.name === 'code-stats-poll') pollCodeStats();
   if (alarm.name === 'keepalive')       browserAPI.storage.local.get('usageData', () => {});
+  if (alarm.name === 'badge-refresh')   refreshBadgeFromStorage();
 });
 
 // ─── Message listener (fetch intercept path + scrape results) ────────────────
@@ -248,7 +273,7 @@ browserAPI.alarms.onAlarm.addListener((alarm) => {
 browserAPI.runtime.onMessage.addListener((message) => {
   if (message.type === 'POLL_NOW') { pollCodeStats(); pollUsage(); return; }
   if (message.type !== 'USAGE_DATA' || !message.data) return;
-  applyUsageData(message.data);
+  applyUsageData(message.data, 'intercept');
 });
 
 // ─── On popup connect: ask content script on any claude.ai tab to scrape ─────
