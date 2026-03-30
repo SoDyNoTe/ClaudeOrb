@@ -9,7 +9,7 @@ A Chrome extension that gives you a real-time popup showing your Claude.ai usage
 1. Go to `chrome://extensions` in Chrome.
 2. Enable **Developer mode** (toggle in the top-right corner).
 3. Click **Load unpacked**.
-4. Select the `extension/` folder from this repository.
+4. Select the `chrome-extension/` folder from this repository.
 
 The ClaudeOrb icon will appear in your Chrome toolbar.
 
