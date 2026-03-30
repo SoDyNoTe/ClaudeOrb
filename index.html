@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClaudeOrb — Never hit a rate limit again</title>
+  <meta name="description" content="Real-time Claude.ai usage monitor for your menubar and browser. Know exactly where you stand before you hit a limit." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0e0e0e;
+      --surface:  #161616;
+      --border:   #222222;
+      --amber:    #d97706;
+      --amber-lt: #f59e0b;
+      --text:     #e5e5e5;
+      --muted:    #666666;
+      --green:    #00c48c;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 48px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(14,14,14,0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .nav-logo span { color: var(--amber); }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      background: var(--amber);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .nav-cta:hover { background: var(--amber-lt); }
+
+    /* ── HERO ── */
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 48px;
+      padding: 100px 48px 80px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .hero-text { flex: 1; max-width: 520px; }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(217,119,6,0.12);
+      border: 1px solid rgba(217,119,6,0.3);
+      border-radius: 99px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--amber);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    h1 {
+      font-size: clamp(40px, 5vw, 58px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      margin-bottom: 22px;
+    }
+
+    h1 em {
+      font-style: normal;
+      color: var(--amber);
+    }
+
+    .hero-sub {
+      font-size: 17px;
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 40px;
+      max-width: 420px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--amber);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 26px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .btn-primary:hover { background: var(--amber-lt); transform: translateY(-1px); }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 26px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s, transform 0.15s;
+    }
+
+    .btn-secondary:hover { border-color: #444; color: #fff; transform: translateY(-1px); }
+
+    .btn-icon { font-size: 18px; }
+
+    .hero-note {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #444;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* ── ORB ── */
+    .hero-orb {
+      flex-shrink: 0;
+      position: relative;
+      width: 320px;
+      height: 320px;
+    }
+
+    .orb-glow {
+      position: absolute;
+      inset: -40px;
+      background: radial-gradient(ellipse at 65% 50%, rgba(217,119,6,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .orb-svg { width: 100%; height: 100%; }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 28px 48px;
+      display: flex;
+      justify-content: center;
+      gap: 0;
+    }
+
+    .stat-item {
+      flex: 1;
+      max-width: 220px;
+      text-align: center;
+      padding: 0 32px;
+      border-right: 1px solid var(--border);
+    }
+
+    .stat-item:last-child { border-right: none; }
+
+    .stat-number {
+      font-size: 32px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .stat-number span { color: var(--amber); }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── SECTIONS ── */
+    section {
+      padding: 96px 48px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-size: clamp(28px, 3.5vw, 40px);
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: #ffffff;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    .section-sub {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 520px;
+      margin-bottom: 56px;
+      line-height: 1.65;
+    }
+
+    /* ── FEATURES GRID ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+
+    .feature-card:hover { border-color: #333; }
+
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    .feature-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .feature-body {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: start;
+    }
+
+    .how-steps { display: flex; flex-direction: column; gap: 32px; }
+
+    .how-step {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(217,119,6,0.15);
+      border: 1px solid rgba(217,119,6,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-top: 2px;
+    }
+
+    .step-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .step-body {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .how-visual {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .mini-popup {
+      background: #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+
+    .mini-tab-bar {
+      display: flex;
+      border-bottom: 1px solid #242424;
+      padding: 0 8px;
+    }
+
+    .mini-tab {
+      flex: 1;
+      padding: 10px 4px;
+      text-align: center;
+      font-size: 10px;
+      color: #555;
+      font-weight: 600;
+    }
+
+    .mini-tab.active { color: #f0f0f0; border-bottom: 2px solid #d97706; }
+
+    .mini-card {
+      margin: 12px;
+      background: #252525;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .mini-card-label {
+      font-size: 8px;
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 10px;
+    }
+
+    .mini-card-body { display: flex; align-items: center; gap: 14px; }
+
+    .mini-ring {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+
+    .mini-stats { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+    .mini-stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+    }
+
+    .mini-stat-label { color: #fff; }
+    .mini-stat-val { color: #ff9500; font-weight: 600; }
+
+    .mini-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-top: 1px solid #212121;
+    }
+
+    .mini-footer-ts { font-size: 9px; color: #fff; }
+    .mini-dot { width: 5px; height: 5px; border-radius: 50%; background: #00c48c; }
+
+    /* ── INSTALL SECTION ── */
+    .install-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .install-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px;
+    }
+
+    .install-platform {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+
+    .install-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+
+    .install-sub {
+      font-size: 13.5px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .install-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--amber);
+      color: #000;
+      border: none;
+      border-radius: 9px;
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      transition: background 0.2s;
+      margin-bottom: 20px;
+    }
+
+    .install-btn:hover { background: var(--amber-lt); }
+
+    .install-btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s;
+      margin-bottom: 20px;
+    }
+
+    .install-btn-secondary:hover { border-color: #444; color: var(--text); }
+
+    /* ── SECURITY SECTION ── */
+    .security-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px;
+      margin-top: 48px;
+    }
+
+    .security-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .security-icon {
+      font-size: 24px;
+    }
+
+    .security-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .security-sub {
+      font-size: 13.5px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+
+    .security-options { display: flex; flex-direction: column; gap: 16px; }
+
+    .security-option {
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+
+    .security-option-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .security-option-body {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      padding: 10px 16px;
+      display: block;
+      margin-top: 10px;
+      color: #00c48c;
+    }
+
+    /* ── ROADMAP ── */
+    .roadmap-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .roadmap-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .roadmap-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .roadmap-dot.done { background: var(--green); }
+    .roadmap-dot.next { background: var(--amber); }
+    .roadmap-dot.soon { background: #333; }
+
+    .roadmap-text {
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .roadmap-tag {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 99px;
+    }
+
+    .roadmap-tag.done { background: rgba(0,196,140,0.12); color: var(--green); }
+    .roadmap-tag.next { background: rgba(217,119,6,0.12); color: var(--amber); }
+    .roadmap-tag.soon { background: #1a1a1a; color: #444; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-logo {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .footer-logo span { color: var(--amber); }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--text); }
+
+    .footer-copy {
+      font-size: 12px;
+      color: #333;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+
+    @media (max-width: 768px) {
+      nav { padding: 16px 24px; }
+      .nav-links { display: none; }
+      .hero { flex-direction: column; padding: 60px 24px 48px; text-align: center; }
+      .hero-orb { width: 220px; height: 220px; }
+      .hero-actions { justify-content: center; }
+      .hero-sub { margin: 0 auto 40px; }
+      .stats-bar { padding: 24px; gap: 0; }
+      .stat-item { padding: 0 16px; }
+      section { padding: 64px 24px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .how-grid { grid-template-columns: 1fr; }
+      .install-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; gap: 24px; padding: 32px 24px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-logo">Claude<span>Orb</span></div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#roadmap">Roadmap</a></li>
+    </ul>
+    <a class="nav-cta" href="https://github.com/SoDyNoTe/ClaudeOrb/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg">Download for Mac</a>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-text">
+      <div class="hero-badge">Free &amp; Open Source</div>
+      <h1>Never hit a rate limit <em>again</em></h1>
+      <p class="hero-sub">ClaudeOrb sits in your menubar and watches your Claude.ai session and weekly usage in real time — so you always know exactly where you stand.</p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="https://github.com/SoDyNoTe/ClaudeOrb/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg">
+          <span class="btn-icon">&#8981;</span> Download for Mac
+        </a>
+        <a class="btn-secondary" href="https://github.com/SoDyNoTe/ClaudeOrb">
+          <span class="btn-icon">&#9670;</span> View on GitHub
+        </a>
+      </div>
+      <p class="hero-note">macOS · arm64 · Free · No account needed</p>
+    </div>
+
+    <div class="hero-orb">
+      <div class="orb-glow"></div>
+      <svg class="orb-svg" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Outer glow ring -->
+        <circle cx="160" cy="160" r="148" stroke="#1e1e1e" stroke-width="1"/>
+        <!-- Dark orb body -->
+        <circle cx="160" cy="160" r="130" fill="#141414"/>
+        <circle cx="160" cy="160" r="130" fill="url(#orbGrad)"/>
+        <!-- Background ring track -->
+        <circle cx="160" cy="160" r="108" stroke="#222" stroke-width="10" fill="none"/>
+        <!-- Amber arc ~72% filled, starts top (−90deg) -->
+        <circle cx="160" cy="160" r="108"
+          stroke="#d97706"
+          stroke-width="10"
+          fill="none"
+          stroke-linecap="round"
+          stroke-dasharray="678.6"
+          stroke-dashoffset="190"
+          transform="rotate(-90 160 160)"/>
+        <!-- Inner ring track -->
+        <circle cx="160" cy="160" r="84" stroke="#1e1e1e" stroke-width="8" fill="none"/>
+        <!-- Green inner arc ~44% -->
+        <circle cx="160" cy="160" r="84"
+          stroke="#00c48c"
+          stroke-width="8"
+          fill="none"
+          stroke-linecap="round"
+          stroke-dasharray="527.8"
+          stroke-dashoffset="296"
+          transform="rotate(-90 160 160)"/>
+        <!-- Center text -->
+        <text x="160" y="150" text-anchor="middle" font-family="Syne, sans-serif" font-size="13" font-weight="600" fill="#666" letter-spacing="2">SESSION</text>
+        <text x="160" y="175" text-anchor="middle" font-family="Syne, sans-serif" font-size="32" font-weight="800" fill="#d97706">72%</text>
+        <text x="160" y="195" text-anchor="middle" font-family="Syne, sans-serif" font-size="11" fill="#444">Resets in 2h 14m</text>
+        <!-- Gradient def -->
+        <defs>
+          <radialGradient id="orbGrad" cx="60%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#1e1a12" stop-opacity="0.6"/>
+            <stop offset="100%" stop-color="#0e0e0e" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+      </svg>
+    </div>
+  </div>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-number">15<span>s</span></div>
+      <div class="stat-label">Update interval</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">4</div>
+      <div class="stat-label">Dashboard tabs</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">0</div>
+      <div class="stat-label">API keys needed</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">Free</div>
+      <div class="stat-label">Always</div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="section-label">Features</div>
+    <h2>Everything you need to stay in control</h2>
+    <p class="section-sub">ClaudeOrb gives you a complete picture of your Claude.ai usage — without ever leaving your workflow.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⏱</div>
+        <div class="feature-title">Live session tracking</div>
+        <div class="feature-body">See your 5-hour session and 7-day weekly usage in real time. Color-coded rings go green → orange → red as you approach limits.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔔</div>
+        <div class="feature-title">Smart notifications</div>
+        <div class="feature-body">Get notified at 80% and 90% so you can finish what you're doing before the limit hits. No surprises mid-session.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">Claude Code stats</div>
+        <div class="feature-body">Track daily tokens, estimated API cost, lines written, files edited, and your coding streak. Built for Claude Code power users.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <div class="feature-title">30-day trends chart</div>
+        <div class="feature-body">See your usage history over the last 30 days. Spot your heaviest days and plan your usage accordingly.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🪟</div>
+        <div class="feature-title">Detachable window</div>
+        <div class="feature-body">Pop out the extension into a floating window you can pin next to your code editor. Stays visible even when you click away.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <div class="feature-title">Chrome extension</div>
+        <div class="feature-body">Prefer to stay in the browser? The ClaudeOrb Chrome extension gives you the same live data as a popup in your toolbar.</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- HOW IT WORKS -->
+  <section id="how-it-works">
+    <div class="section-label">How it works</div>
+    <h2>No API keys. No weird permissions.</h2>
+    <p class="section-sub">Claude's usage data only lives on claude.ai/settings/usage when you're logged in. ClaudeOrb reads it directly — nothing sketchy.</p>
+
+    <div class="how-grid">
+      <div class="how-steps">
+        <div class="how-step">
+          <div class="step-num">1</div>
+          <div>
+            <div class="step-title">Log in once</div>
+            <div class="step-body">On first launch, a small login window opens. Sign into Claude.ai normally — the window closes automatically when your session is detected.</div>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">2</div>
+          <div>
+            <div class="step-title">ClaudeOrb scrapes in the background</div>
+            <div class="step-body">Every 15 seconds, the app silently loads your usage page in a hidden browser window and reads the numbers. No network traffic leaves your device.</div>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">3</div>
+          <div>
+            <div class="step-title">Data stays local</div>
+            <div class="step-body">Everything is stored on your machine. No accounts, no servers, no telemetry. Your Claude session cookie never leaves your computer.</div>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">4</div>
+          <div>
+            <div class="step-title">Session remembered</div>
+            <div class="step-body">You only log in once. After that ClaudeOrb remembers your session and starts monitoring automatically every time you launch it.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="how-visual">
+        <div class="mini-popup">
+          <div class="mini-tab-bar">
+            <div class="mini-tab active">Usage</div>
+            <div class="mini-tab">Code</div>
+            <div class="mini-tab">Trends</div>
+            <div class="mini-tab">Minimal</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-label">Session · 5-hour</div>
+            <div class="mini-card-body">
+              <svg class="mini-ring" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="26" stroke="#2e2e2e" stroke-width="5" fill="none"/>
+                <circle cx="32" cy="32" r="26" stroke="#d97706" stroke-width="5" fill="none"
+                  stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="48"
+                  transform="rotate(-90 32 32)"/>
+                <text x="32" y="37" text-anchor="middle" font-family="Syne" font-size="13" font-weight="800" fill="#d97706">72%</text>
+              </svg>
+              <div class="mini-stats">
+                <div class="mini-stat-row"><span class="mini-stat-label">Used</span><span class="mini-stat-val">72%</span></div>
+                <div class="mini-stat-row"><span class="mini-stat-label">Remaining</span><span class="mini-stat-val">28%</span></div>
+                <div class="mini-stat-row"><span class="mini-stat-label">Resets in</span><span class="mini-stat-val">2h 14m</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card" style="margin-top:0">
+            <div class="mini-card-label">Weekly · 7-day</div>
+            <div class="mini-card-body">
+              <svg class="mini-ring" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="26" stroke="#2e2e2e" stroke-width="5" fill="none"/>
+                <circle cx="32" cy="32" r="26" stroke="#00c48c" stroke-width="5" fill="none"
+                  stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="92"
+                  transform="rotate(-90 32 32)"/>
+                <text x="32" y="37" text-anchor="middle" font-family="Syne" font-size="13" font-weight="800" fill="#00c48c">44%</text>
+              </svg>
+              <div class="mini-stats">
+                <div class="mini-stat-row"><span class="mini-stat-label">Used</span><span class="mini-stat-val">44%</span></div>
+                <div class="mini-stat-row"><span class="mini-stat-label">Remaining</span><span class="mini-stat-val">56%</span></div>
+                <div class="mini-stat-row"><span class="mini-stat-label">Resets in</span><span class="mini-stat-val">4d 18h</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mini-footer">
+            <span class="mini-footer-ts">Updated just now</span>
+            <div class="mini-dot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- INSTALL -->
+  <section id="install">
+    <div class="section-label">Install</div>
+    <h2>Get started in 60 seconds</h2>
+    <p class="section-sub">Download the macOS app or load the Chrome extension — both are free and open source.</p>
+
+    <div class="install-grid">
+      <div class="install-card">
+        <div class="install-platform">macOS App</div>
+        <div class="install-title">ClaudeOrb for Mac</div>
+        <div class="install-sub">Download the .dmg, drag to Applications, and you're done. Supports Apple Silicon (M1, M2, M3, M4).</div>
+        <div>
+          <a class="install-btn" href="https://github.com/SoDyNoTe/ClaudeOrb/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg">
+            &#8628; Download .dmg
+          </a>
+        </div>
+        <div style="font-size:12px;color:#444;font-family:'DM Mono',monospace;">macOS · arm64 · v1.0.0</div>
+      </div>
+
+      <div class="install-card">
+        <div class="install-platform">Chrome Extension</div>
+        <div class="install-title">ClaudeOrb for Chrome</div>
+        <div class="install-sub">Load the extension unpacked from the GitHub repo. Chrome Web Store listing coming soon.</div>
+        <div>
+          <a class="install-btn-secondary" href="https://github.com/SoDyNoTe/ClaudeOrb">
+            &#9670; Get from GitHub
+          </a>
+        </div>
+        <div style="font-size:12px;color:#444;font-family:'DM Mono',monospace;">Chrome Web Store · coming soon</div>
+      </div>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="security-section">
+      <div class="security-header">
+        <span class="security-icon">🔐</span>
+        <div class="security-title">macOS security warning — what to do</div>
+      </div>
+      <p class="security-sub">When you first open ClaudeOrb, macOS will say "ClaudeOrb.app cannot be opened because it is from an unidentified developer." This is because the app isn't yet signed with an Apple Developer certificate — it doesn't mean the app is unsafe. The source code is fully open on GitHub. Here's how to bypass the warning:</p>
+
+      <div class="security-options">
+        <div class="security-option">
+          <div class="security-option-title">Option 1 — Privacy &amp; Security settings (easiest)</div>
+          <div class="security-option-body">Go to <strong>System Settings → Privacy &amp; Security</strong>. Scroll down and you'll see a message saying ClaudeOrb was blocked. Click <strong>Open Anyway</strong>. You only need to do this once.</div>
+        </div>
+        <div class="security-option">
+          <div class="security-option-title">Option 2 — Terminal command</div>
+          <div class="security-option-body">Open Terminal and run this command, then open the app normally:
+            <code>xattr -dr com.apple.quarantine /Applications/ClaudeOrb.app</code>
+          </div>
+        </div>
+        <div class="security-option">
+          <div class="security-option-title">Option 3 — Right-click to open</div>
+          <div class="security-option-body">Right-click ClaudeOrb in your Applications folder, select <strong>Open</strong>, then click <strong>Open</strong> in the dialog that appears. This bypasses Gatekeeper for this one launch and remembers your choice.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <div class="section-label">Roadmap</div>
+    <h2>What's coming next</h2>
+    <p class="section-sub">ClaudeOrb is actively developed. Here's what's shipped and what's in the pipeline.</p>
+
+    <div class="roadmap-list">
+      <div class="roadmap-item">
+        <div class="roadmap-dot done"></div>
+        <div class="roadmap-text">macOS menubar app with live usage monitoring</div>
+        <span class="roadmap-tag done">Shipped</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot done"></div>
+        <div class="roadmap-text">Chrome extension with Usage, Code, Trends and Minimal tabs</div>
+        <span class="roadmap-tag done">Shipped</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot done"></div>
+        <div class="roadmap-text">Claude Code stat tracking (tokens, cost, lines, files, streak)</div>
+        <span class="roadmap-tag done">Shipped</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot next"></div>
+        <div class="roadmap-text">Chrome Web Store listing</div>
+        <span class="roadmap-tag next">Up next</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot next"></div>
+        <div class="roadmap-text">App signing &amp; notarization for macOS</div>
+        <span class="roadmap-tag next">Up next</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot soon"></div>
+        <div class="roadmap-text">Firefox extension</div>
+        <span class="roadmap-tag soon">Planned</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot soon"></div>
+        <div class="roadmap-text">Windows support</div>
+        <span class="roadmap-tag soon">Planned</span>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot soon"></div>
+        <div class="roadmap-text">Physical desk display — a small screen that sits next to your monitor</div>
+        <span class="roadmap-tag soon">Someday</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">Claude<span>Orb</span></div>
+    <ul class="footer-links">
+      <li><a href="https://github.com/SoDyNoTe/ClaudeOrb">GitHub</a></li>
+      <li><a href="https://github.com/SoDyNoTe/ClaudeOrb/releases">Releases</a></li>
+      <li><a href="https://sodynote.github.io/ClaudeOrb/privacy-policy">Privacy Policy</a></li>
+    </ul>
+    <div class="footer-copy">Built by @SoDyNoTe · MIT License</div>
+  </footer>
+
+</body>
+</html>
