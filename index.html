@@ -213,6 +213,7 @@
       position: relative;
       width: 320px;
       height: 320px;
+      animation: float 6s ease-in-out infinite;
     }
 
     .orb-glow {
@@ -234,7 +235,6 @@
       50% { filter: drop-shadow(0 0 20px rgba(217,119,6,0.7)); }
     }
 
-    .hero-orb { animation: float 6s ease-in-out infinite; }
     .orb-amber-arc { animation: glow-pulse 6s ease-in-out infinite; }
 
     /* ── STATS BAR ── */
@@ -750,7 +750,7 @@
       <p class="hero-note">macOS · arm64 · Free · No account needed</p>
     </div>
 
-    <div class="hero-orb">
+    <div class="hero-orb" style="animation: float 6s ease-in-out infinite;">
       <div class="orb-glow"></div>
       <svg class="orb-svg" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
         <!-- Outer glow ring -->
