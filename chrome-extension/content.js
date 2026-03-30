@@ -59,6 +59,22 @@ setInterval(() => {
   }
 }, 30_000);
 
+// ─── Active API poller (runs in page context — always has valid session) ─────
+
+setInterval(async () => {
+  try {
+    const res = await fetch('https://claude.ai/api/usage', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
+      browserAPI.runtime.sendMessage({ type: 'USAGE_DATA', data });
+    }
+  } catch {}
+}, 15_000);
+
 // Re-scrape on demand when popup opens (via SCRAPE_NOW from background.js)
 browserAPI.runtime.onMessage.addListener((message) => {
   if (message.type === 'SCRAPE_NOW') startScrapePolling();
