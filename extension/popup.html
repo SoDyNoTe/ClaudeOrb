@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ClaudeOrb</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      background: #1a1a1a;
+      color: #e5e5e5;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+      padding-bottom: 8px;
+    }
+
+    /* ── Drag region (detached mode) ────────────────────────────────── */
+
+    .drag-region {
+      display: none;
+      height: 28px;
+      background: #141414;
+      -webkit-app-region: drag;
+      border-bottom: 1px solid #242424;
+      position: relative;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .drag-region-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #555555;
+      letter-spacing: 0.05em;
+      -webkit-app-region: no-drag;
+      pointer-events: none;
+    }
+
+    .drag-close-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #555555;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      -webkit-app-region: no-drag;
+      font-family: inherit;
+      transition: color 0.15s;
+    }
+
+    .drag-close-btn:hover { color: #ffffff; }
+
+    body.detached .drag-region { display: flex; }
+    body.detached .popout-btn  { display: none; }
+    body.detached { overflow-y: auto; }
+
+    /* ── Tab bar ─────────────────────────────────────────────────────── */
+
+    .tab-bar {
+      display: flex;
+      padding: 0 8px;
+      border-bottom: 1px solid #242424;
+      position: relative;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;           /* kill browser focus ring */
+      padding: 11px 4px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #aaaaaa;
+      cursor: pointer;
+      position: relative;
+      letter-spacing: 0.03em;
+      transition: color 0.2s ease;
+      font-family: inherit;
+    }
+
+    .tab-btn:focus-visible {
+      /* restore a subtle indicator only for keyboard navigation */
+      outline: 1px solid #d97706;
+      outline-offset: -2px;
+      border-radius: 2px;
+    }
+
+    .tab-btn.active { color: #f0f0f0; }
+
+    .popout-btn {
+      background: none;
+      border: none;
+      color: #d97706;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 8px;
+      margin-left: 2px;
+      align-self: center;
+      border-radius: 4px;
+      font-family: inherit;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .popout-btn:hover { color: #f59e0b; }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 25%;
+      right: 25%;
+      height: 2px;
+      background: #d97706;
+      border-radius: 2px 2px 0 0;
+    }
+
+    /* ── Tab panels ──────────────────────────────────────────────────── */
+
+    .tab-panel {
+      display: none;
+      opacity: 0;
+      transition: opacity 300ms ease-in-out;
+    }
+
+    .tab-panel.active  { display: block; }
+    .tab-panel.visible { opacity: 1; }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TAB 1 — USAGE
+    ═══════════════════════════════════════════════════════════════════ */
+
+    .usage-content {
+      padding: 12px 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ring-card {
+      background: #252525;
+      border-radius: 12px;
+      padding: 14px 16px 14px 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    }
+
+    .ring-card-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 10px;
+    }
+
+    .ring-card-body {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* SVG ring */
+    .ring-wrap {
+      position: relative;
+      flex-shrink: 0;
+      width: 84px;
+      height: 84px;
+    }
+
+    .ring-wrap svg {
+      width: 84px;
+      height: 84px;
+      /* Start from top instead of 3 o'clock */
+      transform: rotate(-90deg);
+    }
+
+    .ring-bg {
+      fill: none;
+      stroke: #2e2e2e;
+      stroke-width: 6.5;
+    }
+
+    .ring-fill {
+      fill: none;
+      stroke-width: 6.5;
+      stroke-linecap: round;
+      /* r=35 → circumference = 2π×35 ≈ 219.91 */
+      stroke-dasharray: 219.91;
+      stroke-dashoffset: 219.91; /* start empty */
+      transition: stroke-dashoffset 1s cubic-bezier(0.4,0,0.2,1),
+                  stroke 0.4s ease;
+    }
+
+    .ring-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ring-pct {
+      font-size: 19px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      transition: color 0.4s ease;
+      color: #f0f0f0;
+    }
+
+    /* Info column beside ring */
+    .ring-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ring-used-bar-track {
+      height: 3px;
+      background: #333;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 2px;
+    }
+
+    .ring-used-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.8s ease, background 0.4s ease;
+    }
+
+    .ring-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ring-stat-label { font-size: 11px; color: #ffffff; }
+    .ring-stat-value {
+      font-size: 11px;
+      font-weight: 500;
+      color: #ff9500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ring-countdown {
+      font-size: 11px;
+      color: #ffffff;
+      margin-top: 2px;
+    }
+
+    .ring-countdown span {
+      color: #ff9500;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ring-inactive {
+      font-size: 11px;
+      color: #3a3a3a;
+      font-style: italic;
+    }
+
+    /* ── Extra Usage collapsible ─────────────────────────────────────── */
+
+    .extra-card {
+      background: #252525;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    }
+
+    .extra-header {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 11px 16px 11px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .extra-chevron {
+      display: inline-block;
+      transition: transform 0.25s ease;
+      font-style: normal;
+      color: #666;
+    }
+
+    .extra-chevron.open { transform: rotate(90deg); }
+
+    .extra-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .extra-body.open { max-height: 120px; }
+
+    .extra-inner {
+      padding: 0 14px 13px;
+    }
+
+    .extra-bar-track {
+      height: 3px;
+      background: #333;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 7px;
+    }
+
+    .extra-bar-fill {
+      height: 100%;
+      background: #ff9500;
+      border-radius: 99px;
+      transition: width 0.8s ease;
+      width: 0%;
+    }
+
+    .extra-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .extra-spent { font-size: 11px; color: #ff9500; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .extra-limit { font-size: 11px; color: #aaaaaa; font-variant-numeric: tabular-nums; }
+    .extra-resets { font-size: 10px; color: #555; }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TAB 2 — CODE STATS
+    ═══════════════════════════════════════════════════════════════════ */
+
+    .code-content {
+      padding: 12px;
+    }
+
+    .placeholder-banner {
+      background: #252525;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .placeholder-icon { font-size: 22px; margin-bottom: 7px; }
+
+    .placeholder-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #777;
+      margin-bottom: 4px;
+    }
+
+    .placeholder-body {
+      font-size: 12px;
+      color: #aaaaaa;
+      line-height: 1.55;
+      margin-bottom: 10px;
+    }
+
+    .dl-btn {
+      background: #d97706;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      letter-spacing: 0.02em;
+    }
+
+    .stat-section-header {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #888888;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      padding: 10px 14px 6px;
+    }
+
+    .stat-section-header.with-divider {
+      margin-top: 4px;
+      border-top: 1px solid #2a2a2a;
+      padding-top: 12px;
+    }
+
+    .stat-list {
+      background: #252525;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      border-bottom: 1px solid #212121;
+    }
+
+    .stat-row:last-child { border-bottom: none; }
+
+    .stat-icon  { font-size: 13px; width: 20px; text-align: center; flex-shrink: 0; }
+    .stat-label { flex: 1; font-size: 11.5px; color: #ffffff; }
+    .stat-val   { font-size: 11.5px; font-weight: 600; color: #ff9500; font-variant-numeric: tabular-nums; }
+
+    /* Streak row — amber highlight */
+    .stat-val.streak {
+      font-size: 12.5px;
+      color: #ff9500;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TAB 3 — TRENDS
+    ═══════════════════════════════════════════════════════════════════ */
+
+    .trends-content { padding: 12px; }
+
+    .chart-card {
+      background: #2a2a2a;
+      border-radius: 10px;
+      padding: 18px 18px 14px;
+      margin-top: 10px;
+    }
+
+    .chart-title {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 14px;
+    }
+
+    .trends-toggle {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .trends-toggle-btn {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid #3a3a3a;
+      background: transparent;
+      color: #666666;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .trends-toggle-btn.active {
+      color: #ff9500;
+      border-color: #ff9500;
+      background: rgba(255,149,0,0.08);
+    }
+
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+      height: 180px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+
+    .bar-tooltip {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      transform: translateX(-50%);
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 9px;
+      color: #ffffff;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.1s;
+      z-index: 10;
+    }
+
+    .bar-tooltip.visible {
+      opacity: 1;
+    }
+
+    .bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+
+    .bar {
+      width: 100%;
+      background: #313131;
+      border-radius: 3px 3px 0 0;
+      min-height: 4px;
+    }
+
+    .bar-labels {
+      display: flex;
+      gap: 5px;
+    }
+
+    .bar-day {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: #3a3a3a;
+      letter-spacing: 0.02em;
+      line-height: 1.4;
+    }
+
+    .bar-cost {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #2e2e2e;
+      margin-top: 2px;
+    }
+
+    .bar-chart.compact {
+      gap: 2px;
+    }
+
+    .bar-labels.compact {
+      gap: 2px;
+    }
+
+    .bar-labels.compact .bar-day {
+      font-size: 7px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TAB 4 — MINIMAL
+    ═══════════════════════════════════════════════════════════════════ */
+
+    .minimal-content {
+      padding: 28px 24px 20px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .minimal-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+      transition: color 0.3s ease;
+    }
+
+    .minimal-number {
+      font-size: 72px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      letter-spacing: -3px;
+      transition: color 0.4s ease;
+      color: #f0f0f0;
+    }
+
+    .minimal-bar-track {
+      height: 2px;
+      background: #242424;
+      border-radius: 99px;
+      overflow: hidden;
+      margin: 18px 0 14px;
+    }
+
+    .minimal-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.9s cubic-bezier(0.4,0,0.2,1), background 0.4s ease;
+    }
+
+    .minimal-timer {
+      font-size: 11px;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .minimal-timer span { color: #ff9500; font-weight: 500; }
+
+    .minimal-hint {
+      margin-top: 16px;
+      font-size: 10px;
+      color: #888888;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────────────── */
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 13px;
+      border-top: 1px solid #212121;
+      margin-top: 10px;
+    }
+
+    .footer-ts {
+      font-size: 10.5px;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00c48c;
+      transition: background 0.4s ease;
+      flex-shrink: 0;
+    }
+
+    /* amber: 2–5 min old */
+    .dot.warn   { background: #ff9500; }
+    /* red: > 5 min old */
+    .dot.stale  { background: #ff3b30; }
+    .dot.empty  { background: #2e2e2e; }
+
+    .footer-ts                { transition: color 0.4s ease; }
+    .footer-ts.ts-warn        { color: #ff9500; }
+    .footer-ts.ts-stale       { color: #ff3b30; }
+
+    /* ── Color utilities ─────────────────────────────────────────────── */
+    .c-ok      { color: #00c48c !important; }
+    .c-warning { color: #ff9500 !important; }
+    .c-danger  { color: #ff3b30 !important; }
+  </style>
+</head>
+<body>
+
+  <div class="drag-region" id="drag-region">
+    <span class="drag-region-title">ClaudeOrb</span>
+    <button class="drag-close-btn" id="drag-close-btn" title="Close">✕</button>
+  </div>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="usage">Usage</button>
+    <button class="tab-btn"        data-tab="code">Code</button>
+    <button class="tab-btn"        data-tab="trends">Trends</button>
+    <button class="tab-btn"        data-tab="minimal">Minimal</button>
+    <button class="popout-btn" id="popout-btn" title="Open in window">⤢</button>
+  </nav>
+
+  <!-- ── TAB 1: USAGE ── -->
+  <div class="tab-panel active" id="tab-usage">
+    <div class="usage-content">
+
+      <div class="ring-card">
+        <div class="ring-card-label">Session · 5-hour</div>
+        <div class="ring-card-body">
+          <div class="ring-wrap">
+            <svg viewBox="0 0 84 84">
+              <circle class="ring-bg"   cx="42" cy="42" r="35"/>
+              <circle class="ring-fill" cx="42" cy="42" r="35" id="ring-session"/>
+            </svg>
+            <div class="ring-center">
+              <span class="ring-pct" id="pct-session">—</span>
+            </div>
+          </div>
+          <div class="ring-info" id="info-session">
+            <div class="ring-used-bar-track">
+              <div class="ring-used-bar-fill" id="bar-session"></div>
+            </div>
+            <div class="ring-stat">
+              <span class="ring-stat-label">Used</span>
+              <span class="ring-stat-value" id="used-session">—</span>
+            </div>
+            <div class="ring-stat">
+              <span class="ring-stat-label">Remaining</span>
+              <span class="ring-stat-value" id="remaining-session">—</span>
+            </div>
+            <div class="ring-countdown" id="countdown-session">
+              Resets in <span id="timer-session">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ring-card">
+        <div class="ring-card-label">Weekly · 7-day</div>
+        <div class="ring-card-body">
+          <div class="ring-wrap">
+            <svg viewBox="0 0 84 84">
+              <circle class="ring-bg"   cx="42" cy="42" r="35"/>
+              <circle class="ring-fill" cx="42" cy="42" r="35" id="ring-weekly"/>
+            </svg>
+            <div class="ring-center">
+              <span class="ring-pct" id="pct-weekly">—</span>
+            </div>
+          </div>
+          <div class="ring-info">
+            <div class="ring-used-bar-track">
+              <div class="ring-used-bar-fill" id="bar-weekly"></div>
+            </div>
+            <div class="ring-stat">
+              <span class="ring-stat-label">Used</span>
+              <span class="ring-stat-value" id="used-weekly">—</span>
+            </div>
+            <div class="ring-stat">
+              <span class="ring-stat-label">Remaining</span>
+              <span class="ring-stat-value" id="remaining-weekly">—</span>
+            </div>
+            <div class="ring-countdown">
+              Resets in <span id="timer-weekly">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Extra usage collapsible (hidden until extra_usage data present) -->
+      <div class="extra-card" id="extra-usage-card" style="display:none">
+        <button class="extra-header" id="extra-toggle">
+          Extra Usage
+          <span class="extra-chevron" id="extra-chevron">›</span>
+        </button>
+        <div class="extra-body" id="extra-body">
+          <div class="extra-inner">
+            <div class="extra-bar-track" id="extra-bar-track">
+              <div class="extra-bar-fill" id="extra-bar"></div>
+            </div>
+            <div class="extra-row">
+              <span class="extra-spent" id="extra-spent">€0.00 spent</span>
+              <span class="extra-limit" id="extra-limit">€0.00 limit</span>
+            </div>
+            <div class="extra-resets" id="extra-resets"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── TAB 2: CODE STATS ── -->
+  <div class="tab-panel" id="tab-code">
+    <div class="code-content">
+      <div class="placeholder-banner">
+        <div class="placeholder-icon">🔌</div>
+        <div class="placeholder-title">ClaudeOrb not running</div>
+        <div class="placeholder-body">Open the ClaudeOrb desktop app to see your stats.</div>
+        <button class="dl-btn" id="dl-btn-code">Download ClaudeOrb</button>
+        <div style="margin-top:8px;font-size:10px;color:#aaaaaa;line-height:1.5">Already installed? Open it from your Applications folder.</div>
+      </div>
+      <div class="stat-list">
+
+        <div class="stat-section-header">Today</div>
+
+        <div class="stat-row">
+          <span class="stat-icon">⚡</span>
+          <span class="stat-label">Tokens today</span>
+          <span class="stat-val" id="code-tokens-today">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💰</span>
+          <span class="stat-label">Cost today</span>
+          <span class="stat-val" id="code-cost-today">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">📝</span>
+          <span class="stat-label">Lines written</span>
+          <span class="stat-val" id="code-lines-today">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">📁</span>
+          <span class="stat-label">Files edited</span>
+          <span class="stat-val" id="code-files-today">—</span>
+        </div>
+
+        <div class="stat-section-header with-divider">This week</div>
+
+        <div class="stat-row">
+          <span class="stat-icon">⚡</span>
+          <span class="stat-label">Tokens this week</span>
+          <span class="stat-val" id="code-tokens-week">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💰</span>
+          <span class="stat-label">Cost this week</span>
+          <span class="stat-val" id="code-cost-week">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🤖</span>
+          <span class="stat-label">Top model</span>
+          <span class="stat-val" id="code-top-model">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🔥</span>
+          <span class="stat-label">Streak</span>
+          <span class="stat-val streak" id="code-streak">—</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TAB 3: TRENDS ── -->
+  <div class="tab-panel" id="tab-trends">
+    <div class="trends-content">
+      <div class="placeholder-banner">
+        <div class="placeholder-icon">📈</div>
+        <div class="placeholder-title">ClaudeOrb not detected</div>
+        <div class="placeholder-body">Open the ClaudeOrb desktop app to see your Claude Code statistics and trends. The app needs to be running in your menubar.</div>
+        <button class="dl-btn" id="dl-btn-trends">Download ClaudeOrb</button>
+        <div style="margin-top:8px;font-size:10px;color:#aaaaaa;line-height:1.5">Already have it? Make sure ClaudeOrb is running in your menubar.</div>
+      </div>
+      <div class="chart-card" id="trends-chart-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="chart-title" style="margin-bottom:0">Token usage</div>
+          <div class="trends-toggle">
+            <button class="trends-toggle-btn active" id="trends-btn-7d" data-range="7d">7D</button>
+            <button class="trends-toggle-btn"        id="trends-btn-30d" data-range="30d">30D</button>
+          </div>
+        </div>
+        <div class="bar-chart" id="trends-bar-chart">
+          <div class="bar-col"><div class="bar" style="height:35%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:60%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:85%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:45%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:70%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:25%"></div></div>
+          <div class="bar-col"><div class="bar" style="height:5%"></div></div>
+        </div>
+        <div class="bar-labels" id="trends-bar-labels">
+          <div class="bar-day">Mon</div>
+          <div class="bar-day">Tue</div>
+          <div class="bar-day">Wed</div>
+          <div class="bar-day">Thu</div>
+          <div class="bar-day">Fri</div>
+          <div class="bar-day">Sat</div>
+          <div class="bar-day">Sun</div>
+        </div>
+        <div id="trends-loading" style="display:none;text-align:center;font-size:9.5px;color:#666666;padding:6px 0 2px;">Loading 30-day data…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TAB 4: MINIMAL ── -->
+  <div class="tab-panel" id="tab-minimal">
+    <div class="minimal-content" id="minimal-card">
+      <div class="minimal-label"  id="minimal-label">SESSION · 5-HOUR</div>
+      <div class="minimal-number" id="minimal-number">—</div>
+      <div class="minimal-bar-track">
+        <div class="minimal-bar-fill" id="minimal-bar"></div>
+      </div>
+      <div class="minimal-timer">Resets in <span id="minimal-timer">—</span></div>
+      <div class="minimal-hint">Tap to switch · session / weekly</div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span class="footer-ts" id="footer-ts">—</span>
+    <div class="dot empty" id="dot"></div>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

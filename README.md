@@ -1,76 +1,45 @@
 # ClaudeOrb
 
-I built ClaudeOrb because I wanted a simple, clean way to see my Claude.ai
-usage without having to open a browser and dig through settings. If you use
-Claude heavily, especially with Claude Code, you know how annoying it is to
-randomly hit a rate limit mid-session with no warning.
+Real-time Claude.ai usage monitor — for your browser and your desk.
 
-CURRENTLY ITS ONLY WORKING ON MAC, BUT SUPPORT FOR OTHER OS WILL BE AVAILABLE 
-SOON.
+---
 
-## How it works
+## Desktop App (macOS)
 
-The tricky part about building this was that Claude's usage data isn't stored
-anywhere on your computer. There's no local file to read, no simple API to call.
-The only place it lives is on claude.ai/settings/usage when you're logged in.
+ClaudeOrb is a macOS menubar app that quietly monitors your Claude.ai usage in the background. It shows your live session and weekly usage, color-coded rings that go green, orange, and red as you approach limits, and a Claude Code tab that tracks daily tokens, estimated API cost, lines written, files edited, and your current streak.
 
-So instead of making sketchy API calls or asking you to paste tokens, the app
-opens a small login window when you first launch it. You log into Claude.ai
-normally, the app detects your session, and closes the window automatically.
-From that point on it silently loads your usage page in the background every
-15 seconds and scrapes the numbers. No API keys, no extra permissions, nothing weird.
+**Download:** [ClaudeOrb-1.0.0-arm64.dmg](https://github.com/SoDyNoTe/claude-companion/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg)
 
-You only have to log in once. After that it remembers your session.
+For full installation instructions and macOS security bypass steps, see [desktop/README.md](desktop/README.md).
 
-## Features
+---
 
-- Live 5-hour session and 7-day weekly usage, updates every 15 seconds
-- Color coded rings that go green, orange, red as you approach limits
-- Notifications at 50%, 80% and 100% so you're never caught off guard
-- Claude Code tab that tracks your daily tokens, estimated API cost, lines written, files edited and current streak
-- Weekly spend chart so you can see which days you go hard
-- Minimal view that cycles through your key stats
-- Detachable floating window you can pin next to your work
-- Stays open even when you click away
+## Chrome Extension
 
-## Installation
+The ClaudeOrb Chrome Extension adds a browser popup with four tabs:
 
-Download the .dmg file from the releases page, open it, and drag
-ClaudeOrb to your Applications folder.
+- **Usage** — live session and weekly usage rings (works standalone)
+- **Minimal** — a compact cycling view of your key stats (works standalone)
+- **Code** — Claude Code token and cost tracking (requires the desktop app)
+- **Trends** — 30-day usage history chart (requires the desktop app)
 
-When you first open the app, macOS will show a warning saying
-"ClaudeOrb.app cannot be opened". This is because the app is not
-yet signed with an Apple Developer certificate. It does not mean
-the app is unsafe.
+Chrome Web Store listing coming soon. In the meantime, load it unpacked — see [extension/README.md](extension/README.md) for steps.
 
-You can bypass this in one of three ways:
+---
 
-**Option 1 - Terminal (easiest):**
-Open Terminal and run:
+## Development
+
+Desktop build commands must be run from inside the `/desktop` folder:
+
+```bash
+cd desktop
+npm install
+npm start        # run in development
+npm run build    # build the macOS .dmg
 ```
-xattr -dr com.apple.quarantine /Applications/ClaudeOrb.app
-```
-Then open the app normally.
 
-**Option 2 - Privacy & Security settings:**
-Go to System Settings, then Privacy & Security.
-Scroll down and you will see a message saying ClaudeOrb was blocked.
-Click Open Anyway.
+---
 
-**Option 3 - Right-click:**
-Right-click the app in your Applications folder, select Open,
-then click Open in the dialog that appears.
+## License
 
-You only need to do this once.
-
-On first launch a login window will open. Sign into your Claude.ai account
-and it will close by itself. That's it.
-
-## What's next
-I'm planning a browser extension for Chrome and Edge, and a Windows version. 
-
-I'm also looking at turning this into a physical desk display, a small screen that
-sits next to your monitor and shows your usage in real time. If there's enough
-interest I'll build it out. Let me know.
-
-Built by @SoDyNoTe
+MIT
