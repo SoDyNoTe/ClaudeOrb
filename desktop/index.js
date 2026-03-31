@@ -562,6 +562,16 @@ function scrapeUsage() {
   });
 }
 
+function updateTrayTitle(data) {
+  if (!mb.tray || !data) return;
+  const fhP = typeof data.five_hour === 'object' ? data.five_hour?.utilization : data.five_hour;
+  const sdP = typeof data.seven_day === 'object' ? data.seven_day?.utilization : data.seven_day;
+  const parts = [];
+  if (fhP != null) parts.push(`${fhP}%`);
+  if (sdP != null) parts.push(`${sdP}%`);
+  mb.tray.setTitle(parts.length ? parts.join(' · ') : '');
+}
+
 async function pollUsage() {
   try {
     const data = await scrapeUsage();
@@ -578,15 +588,7 @@ async function pollUsage() {
       session.savedAt   = new Date().toISOString();
       saveSession();
       checkUsageThresholds(data);
-      // Sync tray title to data arrival
-      if (mb.tray) {
-        const fhP = typeof data.five_hour === 'object' ? data.five_hour?.utilization : data.five_hour;
-        const sdP = typeof data.seven_day === 'object' ? data.seven_day?.utilization : data.seven_day;
-        const parts = [];
-        if (fhP != null) parts.push(`${fhP}%`);
-        if (sdP != null) parts.push(`${sdP}%`);
-        mb.tray.setTitle(parts.length ? parts.join(' · ') : '');
-      }
+      updateTrayTitle(data);
     }
   } catch { /* ignore */ }
 }
@@ -725,6 +727,9 @@ mb.on('ready', () => {
   // Set tray icon explicitly after tray exists
   trayIcon.setTemplateImage(false);
   mb.tray.setImage(trayIcon);
+
+  // Restore tray title from last saved usage data
+  if (session.usageData) updateTrayTitle(session.usageData);
 
   // Dock icon
   if (app.dock) {
