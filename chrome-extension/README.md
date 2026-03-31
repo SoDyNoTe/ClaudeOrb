@@ -34,4 +34,13 @@ Coming soon.
 
 ---
 
+## Known Limitations
+
+**Background tab updates**
+Chrome throttles JavaScript execution in background tabs to save battery and CPU. This means the extension updates most reliably when the claude.ai tab is visible on your screen. If claude.ai is open in a background tab, data may be slightly delayed.
+
+For real-time updates regardless of which tab is active, use the [ClaudeOrb macOS menubar app](https://github.com/SoDyNoTe/ClaudeOrb) instead — it uses a dedicated browser window with a persistent session and is not affected by Chrome's tab throttling.
+
+---
+
 [Back to main README](../README.md)
