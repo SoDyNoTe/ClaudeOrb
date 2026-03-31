@@ -221,15 +221,57 @@ async function pollCodeStats() {
   }
 }
 
+// ─── Usage poller via scripting API ──────────────────────────────────────────
+// Runs the fetch inside the claude.ai tab's context so session cookies are always valid.
+
+function pollUsageViaScripting() {
+  chrome.tabs.query({ url: 'https://claude.ai/*' }, (tabs) => {
+    if (!tabs.length) return;
+    chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: async () => {
+        try {
+          const res = await fetch('https://claude.ai/api/usage', {
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch { return null; }
+      },
+    }, (results) => {
+      const data = results?.[0]?.result;
+      if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
+        // Write directly to storage — applyUsageData is async and not available in callback context
+        chrome.storage.local.get('usageData', () => {
+          chrome.storage.local.set({ usageData: data, updatedAt: Date.now() });
+          // Update badge
+          const pct = Math.round(data.five_hour?.utilization ?? 0);
+          if (pct === 0) {
+            chrome.action.setBadgeText({ text: '' });
+          } else {
+            chrome.action.setBadgeText({ text: `${pct}%` });
+            chrome.action.setBadgeBackgroundColor({
+              color: pct >= 90 ? '#ef4444' : pct >= 70 ? '#f97316' : '#22c55e',
+            });
+          }
+        });
+      }
+    });
+  });
+}
+
 // Register periodic alarms (idempotent — won't duplicate if already registered)
-browserAPI.alarms.create('code-stats-poll', { periodInMinutes: 0.5 });
-browserAPI.alarms.create('keepalive',       { periodInMinutes: 0.4 });
-browserAPI.alarms.create('badge-refresh',   { periodInMinutes: 0.25 });
+browserAPI.alarms.create('claude-usage-poll', { periodInMinutes: 0.5 });
+browserAPI.alarms.create('code-stats-poll',   { periodInMinutes: 0.5 });
+browserAPI.alarms.create('keepalive',         { periodInMinutes: 0.4 });
+browserAPI.alarms.create('badge-refresh',     { periodInMinutes: 0.25 });
 
 browserAPI.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'code-stats-poll') pollCodeStats();
-  if (alarm.name === 'keepalive')       browserAPI.storage.local.get('usageData', () => {});
-  if (alarm.name === 'badge-refresh')   refreshBadgeFromStorage();
+  if (alarm.name === 'claude-usage-poll') pollUsageViaScripting();
+  if (alarm.name === 'code-stats-poll')   pollCodeStats();
+  if (alarm.name === 'keepalive')         browserAPI.storage.local.get('usageData', () => {});
+  if (alarm.name === 'badge-refresh')     refreshBadgeFromStorage();
 });
 
 // ─── Message listener (fetch intercept path + scrape results) ────────────────

@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Monitor your Claude AI session and weekly usage limits in real-time.",
 
-  "permissions": ["storage", "notifications", "alarms", "tabs", "windows"],
+  "permissions": ["storage", "notifications", "alarms", "tabs", "windows", "scripting"],
   "host_permissions": ["https://claude.ai/*", "http://localhost:3000/*"],
 
   "icons": {
