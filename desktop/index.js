@@ -593,7 +593,8 @@ async function pollUsage() {
       showExpiredNotification();
       return;
     }
-    if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
+    if (data) {
+      // Always fully overwrite — never skip because a value went down (e.g. after a reset)
       session.usageData = data;
       session.savedAt   = new Date().toISOString();
       saveSession();
