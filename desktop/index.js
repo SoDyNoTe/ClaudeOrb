@@ -41,9 +41,7 @@ function loadSession() {
 function saveSession() {
   try {
     fs.mkdirSync(SESSION_DIR, { recursive: true });
-    // Only persist auth data — never cache usage percentages so stale numbers never appear on startup
-    const { cookies, usageUrl } = session;
-    fs.writeFileSync(SESSION_FILE, JSON.stringify({ cookies, usageUrl }, null, 2));
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
   } catch { /* ignore */ }
 }
 
@@ -401,22 +399,115 @@ function openLoginWindow() {
 let pollTimer  = null;
 let scrapeWin  = null;
 
-// Fetch /api/usage directly using the page's session cookies — same API the Chrome extension uses.
-// Returns fresh structured JSON every time; no DOM parsing required.
-const FETCH_JS = `
-(async () => {
+const SCRAPE_JS = `
+(() => {
   try {
-    if (location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
+    const body = document.body ? document.body.innerText : '';
+
+    // Detect auth wall
+    if (!body || document.location.pathname.startsWith('/login') || document.location.pathname.startsWith('/auth')) {
       return JSON.stringify({ auth_expired: true });
     }
-    const res = await fetch('/api/usage', {
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (res.status === 401 || res.status === 403) return JSON.stringify({ auth_expired: true });
-    if (!res.ok) return JSON.stringify({ error: res.status });
-    const data = await res.json();
-    return JSON.stringify(data);
+
+    const text = body.toLowerCase();
+
+    // Find all "N% used" occurrences with their positions in the text
+    const pctRe = /(\\d{1,3})%\\s*used/g;
+    const allMatches = [];
+    let m;
+    while ((m = pctRe.exec(text)) !== null) {
+      allMatches.push({ pct: parseInt(m[1], 10), pos: m.index });
+    }
+
+    // Find the weekly boundary to cleanly split the two sections
+    const weekKws    = ['weekly limits', 'weekly', '7-day', '7 day'];
+    const sessionKws = ['current session', 'session', '5-hour', '5 hour', 'hourly'];
+
+    function firstPos(keywords) {
+      let best = Infinity;
+      for (const kw of keywords) {
+        const i = text.indexOf(kw);
+        if (i !== -1 && i < best) best = i;
+      }
+      return best === Infinity ? -1 : best;
+    }
+
+    const sessionPos  = firstPos(sessionKws);
+    const weekPos     = firstPos(weekKws);
+
+    // Split page into two non-overlapping halves at the weekly boundary
+    const weekBoundary  = weekPos !== -1 ? weekPos : body.length;
+    const sessionSlice  = body.slice(0, weekBoundary);        // session section
+    const weekSlice     = body.slice(weekBoundary);           // weekly section
+
+    // Percentage: first "N% used" forward from each section start
+    function extractPctAfter(kwPos) {
+      if (kwPos === -1) return null;
+      const window = allMatches.filter(h => h.pos >= kwPos && h.pos <= kwPos + 300);
+      if (!window.length) return null;
+      window.sort((a, b) => a.pos - b.pos);
+      return window[0].pct;
+    }
+
+    // five_hour resets: "Resets in X hr Y min" / "Resets in X hr" / "Resets in X min"
+    const fiveResetM  = sessionSlice.match(/Resets in (\\d+ hr \\d+ min|\\d+ hr|\\d+ min)/i);
+    const five_hour_resets = fiveResetM ? fiveResetM[1] : null;
+
+    // seven_day resets: try multiple formats —
+    //   "Resets Mon 10:00 PM"  (day name + time)
+    //   "Resets Apr 1"         (month name + day)
+    //   "Resets in X days"     (relative duration)
+    const sevenResetPatterns = [
+      /Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,30})/i,
+      /Resets ((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]{0,20})/i,
+      /Resets in (\d+ days?[^\n]{0,20})/i,
+    ];
+    let seven_day_resets = null;
+    for (const pat of sevenResetPatterns) {
+      const m = weekSlice.match(pat);
+      if (m) { seven_day_resets = m[1].trim(); break; }
+    }
+
+    let five_hour = extractPctAfter(sessionPos);
+    let seven_day = extractPctAfter(weekPos);
+
+    // If both landed on the same match (positions overlap), de-duplicate
+    if (five_hour !== null && seven_day !== null && five_hour === seven_day && sessionPos !== -1 && weekPos !== -1) {
+      const weekWindow = allMatches.filter(h => h.pos >= weekPos && h.pos <= weekPos + 300);
+      weekWindow.sort((a, b) => a.pos - b.pos);
+      const sessionWindow = allMatches.filter(h => h.pos >= sessionPos && h.pos <= sessionPos + 300);
+      const sessionPct = sessionWindow.length ? sessionWindow[0].pct : null;
+      const others = weekWindow.filter(h => h.pct !== sessionPct || h.pos > sessionPos + 300);
+      seven_day = others.length ? others[0].pct : null;
+    }
+
+    // ── Extra usage ───────────────────────────────────────────────────────────
+    let extra_usage = null;
+    const extraIdx  = text.indexOf('extra usage');
+    if (extraIdx !== -1) {
+      const extraSlice = body.slice(extraIdx, extraIdx + 600);
+      const extraText  = extraSlice.toLowerCase();
+
+      // "€32.66 spent"
+      const spentM    = extraSlice.match(/([€$£][\\d.,]+)\\s*spent/i);
+      // "Resets Apr 1" — month-name pattern used for monthly reset
+      const eResetM   = extraSlice.match(/Resets\\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\\n]{0,20})/i);
+      // "163% used"
+      const ePctM     = extraText.match(/(\\d+)%\\s*used/);
+      // "€20\\nMonthly spend limit"
+      const limitM    = extraSlice.match(/([€$£][\\d.,]+)\\s*[\\n\\r]+[^\\n]*[Mm]onthly/);
+
+      if (spentM || ePctM) {
+        extra_usage = {
+          spent:       spentM  ? spentM[1]              : null,
+          utilization: ePctM   ? parseInt(ePctM[1], 10) : null,
+          resets_at:   eResetM ? eResetM[1].trim()      : null,
+          limit:       limitM  ? limitM[1]              : null,
+        };
+      }
+    }
+
+    return JSON.stringify({ five_hour, seven_day, five_hour_resets, seven_day_resets, extra_usage });
   } catch (e) {
     return JSON.stringify({ error: e.message });
   }
@@ -448,23 +539,26 @@ function scrapeUsage() {
 
     scrapeWin.webContents.on('did-finish-load', async () => {
       try {
-        // Short wait for cookies/session to be ready — no DOM render needed
-        await new Promise(r => setTimeout(r, 1000));
-        if (settled) return;
-        const raw = await scrapeWin.webContents.executeJavaScript(FETCH_JS);
+        await new Promise(r => setTimeout(r, 3000));
+        if (settled) return; // 20s timeout may have fired during the wait
+        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
         const parsed = JSON.parse(raw);
-        console.log('[ClaudeOrb] usage API result:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
-        if (parsed.error) { finish(null); return; }
-        // API returns { five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at } }
-        finish((parsed.five_hour !== undefined || parsed.seven_day !== undefined) ? parsed : null);
+        const out = {};
+        if (parsed.five_hour !== null && parsed.five_hour !== undefined)
+          out.five_hour = { utilization: parsed.five_hour, resets_at: parsed.five_hour_resets || null };
+        if (parsed.seven_day !== null && parsed.seven_day !== undefined)
+          out.seven_day = { utilization: parsed.seven_day, resets_at: parsed.seven_day_resets || null };
+        if (parsed.extra_usage)
+          out.extra_usage = parsed.extra_usage;
+        finish(Object.keys(out).length ? out : null);
       } catch (e) {
         finish(null);
       }
     });
 
     scrapeWin.on('closed', () => { scrapeWin = null; });
-    scrapeWin.loadURL(`https://claude.ai/settings/usage?t=${Date.now()}`);
+    scrapeWin.loadURL('https://claude.ai/settings/usage');
   });
 }
 
@@ -489,8 +583,7 @@ async function pollUsage() {
       showExpiredNotification();
       return;
     }
-    if (data) {
-      // Always fully overwrite — never skip because a value went down (e.g. after a reset)
+    if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
       session.usageData = data;
       session.savedAt   = new Date().toISOString();
       saveSession();
@@ -503,7 +596,7 @@ async function pollUsage() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollUsage(); // immediate poll on start
-  pollTimer = setInterval(pollUsage, 10_000);
+  pollTimer = setInterval(pollUsage, 15_000);
 }
 
 // ── Usage threshold notifications ─────────────────────────────────────────────
