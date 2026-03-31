@@ -354,7 +354,7 @@ function renderRingCard(id, utilization, animate, delay) {
   if (!ring || !pctEl) return;
 
   ring.style.stroke = color;
-  pctEl.style.color = color === '#00c48c' ? '#e5e5e5' : color; // keep green rings neutral on text
+  pctEl.style.color = color;
 
   if (animate) {
     // Ring animates via CSS transition after small delay
@@ -370,8 +370,14 @@ function renderRingCard(id, utilization, animate, delay) {
     barEl.style.width      = `${Math.min(pct, 100)}%`;
     barEl.style.background = color;
   }
-  if (usedEl)      usedEl.textContent      = pct === 0 ? '—' : fmtPct(pct);
-  if (remainingEl) remainingEl.textContent = pct === 0 ? '—' : fmtRem(pct);
+  if (usedEl) {
+    usedEl.textContent = pct === 0 ? '—' : fmtPct(pct);
+    usedEl.style.color = pct === 0 ? '' : color;
+  }
+  if (remainingEl) {
+    remainingEl.textContent = pct === 0 ? '—' : fmtRem(pct);
+    remainingEl.style.color = pct === 0 ? '' : color;
+  }
 
   // Session-specific inactive state
   if (id === 'session') {
