@@ -568,7 +568,7 @@ function scrapeUsage() {
     });
 
     scrapeWin.on('closed', () => { scrapeWin = null; });
-    scrapeWin.loadURL('https://claude.ai/settings/usage');
+    scrapeWin.loadURL(`https://claude.ai/settings/usage?t=${Date.now()}`);
   });
 }
 
