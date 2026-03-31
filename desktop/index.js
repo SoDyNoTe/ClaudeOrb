@@ -46,9 +46,6 @@ function saveSession() {
 }
 
 loadSession();
-// Clear stale cached usage data — always wait for a fresh scrape before showing numbers
-session.usageData = null;
-session.savedAt   = null;
 
 // ── Model pricing (per million tokens) ───────────────────────────────────────
 
