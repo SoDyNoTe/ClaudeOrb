@@ -453,9 +453,20 @@ const SCRAPE_JS = `
     const fiveResetM  = sessionSlice.match(/Resets in (\\d+ hr \\d+ min|\\d+ hr|\\d+ min)/i);
     const five_hour_resets = fiveResetM ? fiveResetM[1] : null;
 
-    // seven_day resets: "Resets Mon 10:00 PM" — day name followed by time
-    const sevenResetM = weekSlice.match(/Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\\n]{0,30})/i);
-    const seven_day_resets = sevenResetM ? sevenResetM[1].trim() : null;
+    // seven_day resets: try multiple formats —
+    //   "Resets Mon 10:00 PM"  (day name + time)
+    //   "Resets Apr 1"         (month name + day)
+    //   "Resets in X days"     (relative duration)
+    const sevenResetPatterns = [
+      /Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,30})/i,
+      /Resets ((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]{0,20})/i,
+      /Resets in (\d+ days?[^\n]{0,20})/i,
+    ];
+    let seven_day_resets = null;
+    for (const pat of sevenResetPatterns) {
+      const m = weekSlice.match(pat);
+      if (m) { seven_day_resets = m[1].trim(); break; }
+    }
 
     let five_hour = extractPctAfter(sessionPos);
     let seven_day = extractPctAfter(weekPos);
