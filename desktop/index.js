@@ -454,13 +454,18 @@ const SCRAPE_JS = `
     const five_hour_resets = fiveResetM ? fiveResetM[1] : null;
 
     // seven_day resets: try multiple formats —
-    //   "Resets Mon 10:00 PM"  (day name + time)
-    //   "Resets Apr 1"         (month name + day)
-    //   "Resets in X days"     (relative duration)
+    //   "Resets Mon 10:00 PM" / "Resets Monday"  (day name + optional time)
+    //   "Resets Apr 1"                            (month name + day)
+    //   "Resets in X days Y hours"                (relative: days)
+    //   "Resets in X hours Y min"                 (relative: hours only)
+    //   "Resets in X min"                         (relative: minutes only)
     const sevenResetPatterns = [
+      /Resets ((?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\n]{0,30})/i,
       /Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,30})/i,
       /Resets ((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]{0,20})/i,
-      /Resets in (\d+ days?[^\n]{0,20})/i,
+      /Resets in (\d+ days?[^\n]{0,30})/i,
+      /Resets in (\d+ hours?[^\n]{0,20})/i,
+      /Resets in (\d+ min[^\n]{0,20})/i,
     ];
     let seven_day_resets = null;
     for (const pat of sevenResetPatterns) {
@@ -543,6 +548,7 @@ function scrapeUsage() {
         if (settled) return; // 20s timeout may have fired during the wait
         const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
         const parsed = JSON.parse(raw);
+        console.log('[ClaudeOrb] scrape result:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
         const out = {};
         if (parsed.five_hour !== null && parsed.five_hour !== undefined)
