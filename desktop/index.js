@@ -3,7 +3,7 @@ require('events').EventEmitter.defaultMaxListeners = 20;
 
 const { menubar }                                      = require('menubar');
 const { app, BrowserWindow, Notification,
-        Menu, screen, nativeImage, session: electronSession } = require('electron');
+        Menu, screen, nativeImage }                    = require('electron');
 const express                                          = require('express');
 const fs                                               = require('fs');
 const path                                             = require('path');
@@ -760,21 +760,7 @@ mb.on('ready', () => {
     sessionCaptured = true;
     startPolling();
   } else {
-    // session.json missing or cleared — check if the persist:claudeai partition
-    // already has valid cookies (e.g. after a cache file delete)
-    electronSession.fromPartition('persist:claudeai').cookies
-      .get({ url: 'https://claude.ai' })
-      .then((cookies) => {
-        if (cookies.some(c => c.name === 'sessionKey')) {
-          sessionCaptured    = true;
-          session.cookies    = 'captured';
-          saveSession();
-          startPolling();
-        } else {
-          openLoginWindow();
-        }
-      })
-      .catch(() => openLoginWindow());
+    openLoginWindow();
   }
 
 });
