@@ -557,6 +557,10 @@ function scrapeUsage() {
           out.seven_day = { utilization: parsed.seven_day, resets_at: parsed.seven_day_resets || null };
         if (parsed.extra_usage)
           out.extra_usage = parsed.extra_usage;
+        // Hard reload after scrape so next poll always fetches fresh data from the server
+        if (scrapeWin && !scrapeWin.isDestroyed()) {
+          scrapeWin.webContents.reloadIgnoringCache();
+        }
         finish(Object.keys(out).length ? out : null);
       } catch (e) {
         finish(null);
@@ -602,7 +606,7 @@ async function pollUsage() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollUsage(); // immediate poll on start
-  pollTimer = setInterval(pollUsage, 15_000);
+  pollTimer = setInterval(pollUsage, 10_000);
 }
 
 // ── Usage threshold notifications ─────────────────────────────────────────────
