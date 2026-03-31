@@ -1,6 +1,6 @@
 # ClaudeOrb
 
-Real-time Claude.ai usage monitor - for your browser and your desk.
+Real-time Claude.ai usage monitor - for desktop and browser.
 
 I built ClaudeOrb because I wanted a simple, clean way to see my Claude.ai usage without having to open a browser and dig through settings. If you use Claude heavily, especially with Claude Code, you know how annoying it is to randomly hit a rate limit mid-session with no warning.
 
