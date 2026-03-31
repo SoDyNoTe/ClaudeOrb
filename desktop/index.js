@@ -41,7 +41,9 @@ function loadSession() {
 function saveSession() {
   try {
     fs.mkdirSync(SESSION_DIR, { recursive: true });
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
+    // Only persist auth data — never cache usage percentages so stale numbers never appear on startup
+    const { cookies, usageUrl } = session;
+    fs.writeFileSync(SESSION_FILE, JSON.stringify({ cookies, usageUrl }, null, 2));
   } catch { /* ignore */ }
 }
 
