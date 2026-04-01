@@ -10,6 +10,13 @@ const path                                             = require('path');
 const os                                               = require('os');
 const AutoLaunch                                       = require('auto-launch');
 
+// ── Debug logging ─────────────────────────────────────────────────────────────
+const logFile = path.join(os.homedir(), 'claudeorb-debug.log');
+const log = (...args) => {
+  try { fs.appendFileSync(logFile, new Date().toISOString() + ' ' + args.join(' ') + '\n'); } catch {}
+};
+log('App starting');
+
 // ── App icon ──────────────────────────────────────────────────────────────────
 
 const iconPath      = path.join(__dirname, 'assets', 'icon.png');
@@ -401,115 +408,22 @@ function openLoginWindow() {
 let pollTimer  = null;
 let scrapeWin  = null;
 
-const SCRAPE_JS = `
-(() => {
+// Fetch /api/usage directly using the hidden window's session cookies.
+// No DOM parsing — always returns fresh structured JSON.
+const FETCH_JS = `
+(async () => {
   try {
-    const body = document.body ? document.body.innerText : '';
-
-    // Detect auth wall
-    if (!body || document.location.pathname.startsWith('/login') || document.location.pathname.startsWith('/auth')) {
+    if (location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
       return JSON.stringify({ auth_expired: true });
     }
-
-    const text = body.toLowerCase();
-
-    // Find all "N% used" occurrences with their positions in the text
-    const pctRe = /(\\d{1,3})%\\s*used/g;
-    const allMatches = [];
-    let m;
-    while ((m = pctRe.exec(text)) !== null) {
-      allMatches.push({ pct: parseInt(m[1], 10), pos: m.index });
-    }
-
-    // Find the weekly boundary to cleanly split the two sections
-    const weekKws    = ['weekly limits', 'weekly', '7-day', '7 day'];
-    const sessionKws = ['current session', 'session', '5-hour', '5 hour', 'hourly'];
-
-    function firstPos(keywords) {
-      let best = Infinity;
-      for (const kw of keywords) {
-        const i = text.indexOf(kw);
-        if (i !== -1 && i < best) best = i;
-      }
-      return best === Infinity ? -1 : best;
-    }
-
-    const sessionPos  = firstPos(sessionKws);
-    const weekPos     = firstPos(weekKws);
-
-    // Split page into two non-overlapping halves at the weekly boundary
-    const weekBoundary  = weekPos !== -1 ? weekPos : body.length;
-    const sessionSlice  = body.slice(0, weekBoundary);        // session section
-    const weekSlice     = body.slice(weekBoundary);           // weekly section
-
-    // Percentage: first "N% used" forward from each section start
-    function extractPctAfter(kwPos) {
-      if (kwPos === -1) return null;
-      const window = allMatches.filter(h => h.pos >= kwPos && h.pos <= kwPos + 300);
-      if (!window.length) return null;
-      window.sort((a, b) => a.pos - b.pos);
-      return window[0].pct;
-    }
-
-    // five_hour resets: "Resets in X hr Y min" / "Resets in X hr" / "Resets in X min"
-    const fiveResetM  = sessionSlice.match(/Resets in (\\d+ hr \\d+ min|\\d+ hr|\\d+ min)/i);
-    const five_hour_resets = fiveResetM ? fiveResetM[1] : null;
-
-    // seven_day resets: try multiple formats —
-    //   "Resets Mon 10:00 PM"  (day name + time)
-    //   "Resets Apr 1"         (month name + day)
-    //   "Resets in X days"     (relative duration)
-    const sevenResetPatterns = [
-      /Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,30})/i,
-      /Resets ((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]{0,20})/i,
-      /Resets in (\d+ days?[^\n]{0,20})/i,
-    ];
-    let seven_day_resets = null;
-    for (const pat of sevenResetPatterns) {
-      const m = weekSlice.match(pat);
-      if (m) { seven_day_resets = m[1].trim(); break; }
-    }
-
-    let five_hour = extractPctAfter(sessionPos);
-    let seven_day = extractPctAfter(weekPos);
-
-    // If both landed on the same match (positions overlap), de-duplicate
-    if (five_hour !== null && seven_day !== null && five_hour === seven_day && sessionPos !== -1 && weekPos !== -1) {
-      const weekWindow = allMatches.filter(h => h.pos >= weekPos && h.pos <= weekPos + 300);
-      weekWindow.sort((a, b) => a.pos - b.pos);
-      const sessionWindow = allMatches.filter(h => h.pos >= sessionPos && h.pos <= sessionPos + 300);
-      const sessionPct = sessionWindow.length ? sessionWindow[0].pct : null;
-      const others = weekWindow.filter(h => h.pct !== sessionPct || h.pos > sessionPos + 300);
-      seven_day = others.length ? others[0].pct : null;
-    }
-
-    // ── Extra usage ───────────────────────────────────────────────────────────
-    let extra_usage = null;
-    const extraIdx  = text.indexOf('extra usage');
-    if (extraIdx !== -1) {
-      const extraSlice = body.slice(extraIdx, extraIdx + 600);
-      const extraText  = extraSlice.toLowerCase();
-
-      // "€32.66 spent"
-      const spentM    = extraSlice.match(/([€$£][\\d.,]+)\\s*spent/i);
-      // "Resets Apr 1" — month-name pattern used for monthly reset
-      const eResetM   = extraSlice.match(/Resets\\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\\n]{0,20})/i);
-      // "163% used"
-      const ePctM     = extraText.match(/(\\d+)%\\s*used/);
-      // "€20\\nMonthly spend limit"
-      const limitM    = extraSlice.match(/([€$£][\\d.,]+)\\s*[\\n\\r]+[^\\n]*[Mm]onthly/);
-
-      if (spentM || ePctM) {
-        extra_usage = {
-          spent:       spentM  ? spentM[1]              : null,
-          utilization: ePctM   ? parseInt(ePctM[1], 10) : null,
-          resets_at:   eResetM ? eResetM[1].trim()      : null,
-          limit:       limitM  ? limitM[1]              : null,
-        };
-      }
-    }
-
-    return JSON.stringify({ five_hour, seven_day, five_hour_resets, seven_day_resets, extra_usage });
+    const res = await fetch('/api/usage', {
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (res.status === 401 || res.status === 403) return JSON.stringify({ auth_expired: true });
+    if (!res.ok) return JSON.stringify({ error: res.status });
+    const data = await res.json();
+    return JSON.stringify(data);
   } catch (e) {
     return JSON.stringify({ error: e.message });
   }
@@ -541,26 +455,24 @@ function scrapeUsage() {
 
     scrapeWin.webContents.on('did-finish-load', async () => {
       try {
-        await new Promise(r => setTimeout(r, 3000));
-        if (settled) return; // 20s timeout may have fired during the wait
-        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
+        // Short wait for session cookies to be ready — no DOM render needed
+        await new Promise(r => setTimeout(r, 1000));
+        if (settled) return;
+        const raw = await scrapeWin.webContents.executeJavaScript(FETCH_JS);
         const parsed = JSON.parse(raw);
+        log('API fetch result:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
-        const out = {};
-        if (parsed.five_hour !== null && parsed.five_hour !== undefined)
-          out.five_hour = { utilization: parsed.five_hour, resets_at: parsed.five_hour_resets || null };
-        if (parsed.seven_day !== null && parsed.seven_day !== undefined)
-          out.seven_day = { utilization: parsed.seven_day, resets_at: parsed.seven_day_resets || null };
-        if (parsed.extra_usage)
-          out.extra_usage = parsed.extra_usage;
-        finish(Object.keys(out).length ? out : null);
+        if (parsed.error) { log('API error:', parsed.error); finish(null); return; }
+        // API returns { five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at }, ... }
+        finish((parsed.five_hour !== undefined || parsed.seven_day !== undefined) ? parsed : null);
       } catch (e) {
+        log('executeJavaScript error:', e.message);
         finish(null);
       }
     });
 
     scrapeWin.on('closed', () => { scrapeWin = null; });
-    scrapeWin.loadURL('https://claude.ai/settings/usage');
+    scrapeWin.loadURL('https://claude.ai/');
   });
 }
 
@@ -576,9 +488,12 @@ function updateTrayTitle(data) {
 }
 
 async function pollUsage() {
+  log('pollUsage called');
   try {
     const data = await scrapeUsage();
+    log('Scraper result:', JSON.stringify(data));
     if (data === 'auth_expired') {
+      log('auth_expired fired');
       session.cookies  = '';
       session.usageUrl = '';
       sessionCaptured  = false;
@@ -757,24 +672,35 @@ mb.on('ready', () => {
   }, 5000);
 
   // Always verify partition cookies — never trust session.json alone
+  log('Checking partition cookies');
   electronSession.fromPartition('persist:claudeai').cookies
     .get({ url: 'https://claude.ai' })
     .then((cookies) => {
-      if (cookies.some(c => c.name === 'sessionKey')) {
+      const names = cookies.map(c => c.name).join(', ');
+      log('Partition cookies found:', names || '(none)');
+      const found = cookies.some(c => c.name === 'sessionKey');
+      log('sessionKey found:', found);
+      if (found) {
         sessionCaptured = true;
         session.cookies = 'captured';
         saveSession();
         clearTimeout(loginFallback);
+        log('startPolling called');
         startPolling();
       } else {
         // Partition has no valid session — clear stale file and force login
         session.cookies = '';
         saveSession();
         clearTimeout(loginFallback);
+        log('No sessionKey — opening login window');
         openLoginWindow();
       }
     })
-    .catch(() => { clearTimeout(loginFallback); openLoginWindow(); });
+    .catch((err) => {
+      log('Cookie check error:', err?.message);
+      clearTimeout(loginFallback);
+      openLoginWindow();
+    });
 
 });
 
