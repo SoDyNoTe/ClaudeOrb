@@ -481,32 +481,85 @@ function scrapeUsage() {
     scrapeWin = new BrowserWindow({
       show: false,
       icon: appIcon,
-      webPreferences: { nodeIntegration: false, contextIsolation: true, partition: 'persist:claudeai' },
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        partition: 'persist:claudeai',
+        webSecurity: false,
+        allowRunningInsecureContent: true,
+      },
     });
 
-    let settled = false;
-    let timeout = null;
+    // Strip CSP headers so executeJavaScript can run on claude.ai pages
+    scrapeWin.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      const headers = { ...details.responseHeaders };
+      delete headers['content-security-policy'];
+      delete headers['Content-Security-Policy'];
+      callback({ responseHeaders: headers });
+    });
+
+    let settled    = false;
+    let scrapeTimer = null;
+    let timeout    = null;
+
     const finish = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      clearTimeout(scrapeTimer);
       if (scrapeWin && !scrapeWin.isDestroyed()) scrapeWin.destroy();
       scrapeWin = null;
       resolve(result);
     };
 
-    timeout = setTimeout(() => finish(null), 20_000);
+    timeout = setTimeout(() => { log('Scraper timed out'); finish(null); }, 25_000);
 
-    scrapeWin.webContents.on('did-finish-load', async () => {
+    const runScrape = async (attempt = 1) => {
+      if (settled) return;
       try {
-        // Wait for SPA to fully render
-        await new Promise(r => setTimeout(r, 5000));
-        if (settled) return;
-        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
+        // Guard: still navigating — wait and retry
+        if (scrapeWin.webContents.isLoading()) {
+          log('Page still loading, waiting...');
+          scrapeTimer = setTimeout(() => runScrape(attempt), 1500);
+          return;
+        }
+        const url = scrapeWin.webContents.getURL();
+        log(`Scraping attempt ${attempt} at URL:`, url);
+
+        // If SPA navigated away from settings page, re-navigate
+        if (!url.includes('/settings/usage')) {
+          log('Not at settings/usage, got:', url, '— re-navigating');
+          scrapeWin.loadURL('https://claude.ai/settings/usage');
+          return; // did-finish-load will re-arm the timer
+        }
+
+        // Quick sanity check before running the full script
+        try {
+          const readyState = await scrapeWin.webContents.executeJavaScript('document.readyState');
+          log('document.readyState:', readyState);
+          if (readyState !== 'complete') {
+            scrapeTimer = setTimeout(() => runScrape(attempt), 1500);
+            return;
+          }
+        } catch (e) {
+          log('readyState check failed:', e.message, '— retrying in 2s');
+          if (attempt < 5) {
+            scrapeTimer = setTimeout(() => runScrape(attempt + 1), 2000);
+          } else {
+            finish(null);
+          }
+          return;
+        }
+
+        // First test: can we read the page at all?
+        const bodyLen = await scrapeWin.webContents.executeJavaScript('document.body ? document.body.innerText.length : -1', true);
+        log('body.innerText.length:', bodyLen);
+
+        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS, true);
         const parsed = JSON.parse(raw);
         log('Scrape parsed:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
-        if (parsed.error) { log('Scrape error:', parsed.error); finish(null); return; }
+        if (parsed.error) { log('Scrape JS error:', parsed.error); finish(null); return; }
         const out = {};
         if (parsed.five_hour !== null && parsed.five_hour !== undefined)
           out.five_hour = { utilization: parsed.five_hour, resets_at: parsed.five_hour_resets || null };
@@ -517,9 +570,24 @@ function scrapeUsage() {
         log('Scraper result:', JSON.stringify(out));
         finish(Object.keys(out).length ? out : null);
       } catch (e) {
-        log('executeJavaScript error:', e.message);
-        finish(null);
+        log(`executeJavaScript error (attempt ${attempt}):`, e.message);
+        if (attempt < 5) {
+          scrapeTimer = setTimeout(() => runScrape(attempt + 1), 2000);
+        } else {
+          finish(null);
+        }
       }
+    };
+
+    // Each time the page (re-)loads, cancel the previous timer and restart.
+    // This ensures we only scrape after the LAST navigation has settled.
+    scrapeWin.webContents.on('console-message', (_e, level, msg) => {
+      log('Renderer console:', msg);
+    });
+
+    scrapeWin.webContents.on('did-finish-load', () => {
+      clearTimeout(scrapeTimer);
+      scrapeTimer = setTimeout(() => runScrape(1), 4000);
     });
 
     scrapeWin.on('closed', () => { scrapeWin = null; });
@@ -567,11 +635,13 @@ async function pollUsage() {
       if (!pollTimer) return;
       nullScrapeCount++;
       log('Null scrape count:', nullScrapeCount);
-      if (nullScrapeCount >= 3) {
-        log('3 consecutive nulls — stopping polling and opening login window');
+      // Only force login if we have never confirmed a valid session this run.
+      // If sessionCaptured is true the page was just slow — keep retrying silently.
+      // Real auth expiry is handled by the auth_expired signal above.
+      if (nullScrapeCount >= 3 && !sessionCaptured) {
+        log('3 consecutive nulls and no session — opening login window');
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         nullScrapeCount = 0;
-        sessionCaptured = false;
         session.cookies = '';
         saveSession();
         openLoginWindow();

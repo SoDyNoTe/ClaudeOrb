@@ -556,7 +556,7 @@
       <!-- No-session connecting card -->
       <div id="connect-card" class="connecting-card" style="display:none">
         <div class="connecting-spinner"></div>
-        <span>Connecting to Claude.ai...</span>
+        <span id="connect-msg">Loading usage data...</span>
       </div>
 
       <!-- SESSION · 5-HOUR -->
@@ -894,6 +894,9 @@ function renderUsage() {
 
   if (!usageData) {
     connectCard.style.display = 'block';
+    document.getElementById('connect-msg').textContent = hasSession
+      ? 'Loading usage data...'
+      : 'Connecting to Claude.ai...';
     card5h.style.display      = 'none';
     card7d.style.display      = 'none';
     cardExtra.style.display   = 'none';
@@ -1144,7 +1147,7 @@ setInterval(() => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 fetch('http://localhost:3000/trigger-poll', { method: 'POST' }).catch(() => {});
 fetchAll();
-setInterval(fetchAll, 60_000);
+setInterval(fetchAll, 5_000);
 </script>
 </body>
 </html>
