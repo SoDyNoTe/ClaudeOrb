@@ -766,28 +766,25 @@ mb.on('ready', () => {
     if (!sessionCaptured) openLoginWindow();
   }, 5000);
 
-  if (session.cookies) {
-    sessionCaptured = true;
-    clearTimeout(loginFallback);
-    startPolling();
-  } else {
-    // session.json missing — check if the persist:claudeai partition already has cookies
-    electronSession.fromPartition('persist:claudeai').cookies
-      .get({ url: 'https://claude.ai' })
-      .then((cookies) => {
-        if (cookies.some(c => c.name === 'sessionKey')) {
-          sessionCaptured = true;
-          session.cookies = 'captured';
-          saveSession();
-          clearTimeout(loginFallback);
-          startPolling();
-        } else {
-          clearTimeout(loginFallback);
-          openLoginWindow();
-        }
-      })
-      .catch(() => { clearTimeout(loginFallback); openLoginWindow(); });
-  }
+  // Always verify partition cookies — never trust session.json alone
+  electronSession.fromPartition('persist:claudeai').cookies
+    .get({ url: 'https://claude.ai' })
+    .then((cookies) => {
+      if (cookies.some(c => c.name === 'sessionKey')) {
+        sessionCaptured = true;
+        session.cookies = 'captured';
+        saveSession();
+        clearTimeout(loginFallback);
+        startPolling();
+      } else {
+        // Partition has no valid session — clear stale file and force login
+        session.cookies = '';
+        saveSession();
+        clearTimeout(loginFallback);
+        openLoginWindow();
+      }
+    })
+    .catch(() => { clearTimeout(loginFallback); openLoginWindow(); });
 
 });
 
