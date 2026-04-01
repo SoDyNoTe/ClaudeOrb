@@ -693,16 +693,6 @@ function checkUsageThresholds(data) {
   }
 }
 
-function showExpiredNotification() {
-  if (!Notification.isSupported()) return;
-  const n = new Notification({
-    title: 'ClaudeOrb',
-    body:  'Session expired — click to re-login',
-    icon:  path.join(__dirname, 'assets', 'icon.icns'),
-  });
-  n.on('click', () => openLoginWindow());
-  n.show();
-}
 
 // ── Menubar ───────────────────────────────────────────────────────────────────
 
