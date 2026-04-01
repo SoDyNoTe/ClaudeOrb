@@ -409,6 +409,7 @@ function openLoginWindow() {
 let pollTimer      = null;
 let scrapeWin      = null;
 let nullScrapeCount = 0;
+let isScraping     = false; // prevent concurrent scrapes
 
 const SCRAPE_JS = `
 (() => {
@@ -538,6 +539,8 @@ function updateTrayTitle(data) {
 }
 
 async function pollUsage() {
+  if (isScraping) return; // prevent concurrent scrapes
+  isScraping = true;
   log('pollUsage called');
   try {
     const data = await scrapeUsage();
@@ -575,6 +578,7 @@ async function pollUsage() {
       }
     }
   } catch { /* ignore */ }
+  finally { isScraping = false; }
 }
 
 function startPolling() {
