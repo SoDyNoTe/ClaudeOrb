@@ -408,15 +408,15 @@ function openLoginWindow() {
 let pollTimer  = null;
 let scrapeWin  = null;
 
-// Fetch /api/usage directly using the hidden window's session cookies.
-// No DOM parsing — always returns fresh structured JSON.
+// Fetch usage API using the hidden window's session cookies.
+// Uses absolute URL to avoid 404s from relative path on redirect pages.
 const FETCH_JS = `
 (async () => {
   try {
     if (location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
       return JSON.stringify({ auth_expired: true });
     }
-    const res = await fetch('/api/usage', {
+    const res = await fetch('https://claude.ai/api/usage', {
       credentials: 'include',
       headers: { 'Accept': 'application/json' },
     });
@@ -455,8 +455,8 @@ function scrapeUsage() {
 
     scrapeWin.webContents.on('did-finish-load', async () => {
       try {
-        // Short wait for session cookies to be ready — no DOM render needed
-        await new Promise(r => setTimeout(r, 1000));
+        // Wait for page and cookies to be fully ready before fetching
+        await new Promise(r => setTimeout(r, 2000));
         if (settled) return;
         const raw = await scrapeWin.webContents.executeJavaScript(FETCH_JS);
         const parsed = JSON.parse(raw);
