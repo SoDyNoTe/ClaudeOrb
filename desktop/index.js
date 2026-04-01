@@ -581,9 +581,11 @@ async function pollUsage() {
     if (data === 'auth_expired') {
       session.cookies  = '';
       session.usageUrl = '';
+      sessionCaptured  = false;
       saveSession();
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      showExpiredNotification();
+      // Open login window immediately — never leave user stuck on loading screen
+      openLoginWindow();
       return;
     }
     if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
@@ -759,8 +761,14 @@ mb.on('ready', () => {
     }
   });
 
+  // 5s fallback — if polling hasn't started by then, open login window
+  const loginFallback = setTimeout(() => {
+    if (!sessionCaptured) openLoginWindow();
+  }, 5000);
+
   if (session.cookies) {
     sessionCaptured = true;
+    clearTimeout(loginFallback);
     startPolling();
   } else {
     // session.json missing — check if the persist:claudeai partition already has cookies
@@ -771,12 +779,14 @@ mb.on('ready', () => {
           sessionCaptured = true;
           session.cookies = 'captured';
           saveSession();
+          clearTimeout(loginFallback);
           startPolling();
         } else {
+          clearTimeout(loginFallback);
           openLoginWindow();
         }
       })
-      .catch(() => openLoginWindow());
+      .catch(() => { clearTimeout(loginFallback); openLoginWindow(); });
   }
 
 });
