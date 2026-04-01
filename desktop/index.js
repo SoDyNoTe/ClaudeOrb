@@ -41,7 +41,9 @@ function loadSession() {
 function saveSession() {
   try {
     fs.mkdirSync(SESSION_DIR, { recursive: true });
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
+    // Never persist usageData — always start fresh on next launch
+    const { cookies, usageUrl } = session;
+    fs.writeFileSync(SESSION_FILE, JSON.stringify({ cookies, usageUrl }, null, 2));
   } catch { /* ignore */ }
 }
 
@@ -563,13 +565,14 @@ function scrapeUsage() {
 }
 
 function updateTrayTitle(data) {
-  if (!mb.tray || !data) return;
+  if (!mb.tray) return;
+  if (!data) { mb.tray.setTitle('—'); return; }
   const fhP = typeof data.five_hour === 'object' ? data.five_hour?.utilization : data.five_hour;
   const sdP = typeof data.seven_day === 'object' ? data.seven_day?.utilization : data.seven_day;
   const parts = [];
   if (fhP != null) parts.push(`${fhP}%`);
   if (sdP != null) parts.push(`${sdP}%`);
-  mb.tray.setTitle(parts.length ? parts.join(' · ') : '');
+  mb.tray.setTitle(parts.length ? parts.join(' · ') : '—');
 }
 
 async function pollUsage() {
@@ -728,8 +731,8 @@ mb.on('ready', () => {
   trayIcon.setTemplateImage(false);
   mb.tray.setImage(trayIcon);
 
-  // Restore tray title from last saved usage data
-  if (session.usageData) updateTrayTitle(session.usageData);
+  // Always set tray title on startup — "—" until first scrape arrives
+  updateTrayTitle(session.usageData || null);
 
   // Dock icon
   if (app.dock) {
