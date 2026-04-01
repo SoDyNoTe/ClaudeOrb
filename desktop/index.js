@@ -348,6 +348,15 @@ httpApp.post('/open-detached', (_req, res) => {
 
 httpApp.listen(3000, '127.0.0.1');
 
+// Strip CSP headers on the scraper/login session so executeJavaScript works on claude.ai.
+// Registered once here — not per-scrape — to avoid repeated re-registration.
+electronSession.fromPartition('persist:claudeai').webRequest.onHeadersReceived((details, callback) => {
+  const headers = { ...details.responseHeaders };
+  delete headers['content-security-policy'];
+  delete headers['Content-Security-Policy'];
+  callback({ responseHeaders: headers });
+});
+
 // ── Login window ──────────────────────────────────────────────────────────────
 
 let loginWin        = null;
@@ -419,24 +428,16 @@ const SCRAPE_JS = `
       return JSON.stringify({ auth_expired: true });
     }
 
-    // ── Locate section boundaries ─────────────────────────────────────────────
-    // Page structure (confirmed from live page):
-    //   "Current session\nResets in X hr Y min\nN% used"
-    //   "Weekly limits\n...All models\nResets Tue HH:MM PM\nN% used"
-    //   "Extra usage\n..."
-
     const sessionIdx = body.indexOf('Current session');
     const weekIdx    = body.indexOf('Weekly limits');
     const extraIdx   = body.indexOf('Extra usage');
 
-    // ── Helper: extract first "N% used" after a given index ──────────────────
     function extractPct(from, to) {
       const slice = body.slice(from, to !== -1 ? to : from + 500);
       const m = slice.match(/(\\d{1,3})%\\s*used/i);
       return m ? parseInt(m[1], 10) : null;
     }
 
-    // ── Helper: extract "Resets in ..." or "Resets Dayname ..." after index ──
     function extractResets(from, to) {
       const slice = body.slice(from, to !== -1 ? to : from + 500);
       const m = slice.match(/Resets in ([^\\n]+)|Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\\n]+)/i);
@@ -449,7 +450,6 @@ const SCRAPE_JS = `
     const seven_day      = weekIdx    !== -1 ? extractPct(weekIdx, extraIdx)      : null;
     const seven_day_resets = weekIdx  !== -1 ? extractResets(weekIdx, extraIdx)   : null;
 
-    // ── Extra usage ───────────────────────────────────────────────────────────
     let extra_usage = null;
     if (extraIdx !== -1) {
       const extraSlice = body.slice(extraIdx, extraIdx + 600);
@@ -490,13 +490,6 @@ function scrapeUsage() {
       },
     });
 
-    // Strip CSP headers so executeJavaScript can run on claude.ai pages
-    scrapeWin.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-      const headers = { ...details.responseHeaders };
-      delete headers['content-security-policy'];
-      delete headers['Content-Security-Policy'];
-      callback({ responseHeaders: headers });
-    });
 
     let settled    = false;
     let scrapeTimer = null;
@@ -551,10 +544,6 @@ function scrapeUsage() {
           return;
         }
 
-        // First test: can we read the page at all?
-        const bodyLen = await scrapeWin.webContents.executeJavaScript('document.body ? document.body.innerText.length : -1', true);
-        log('body.innerText.length:', bodyLen);
-
         const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS, true);
         const parsed = JSON.parse(raw);
         log('Scrape parsed:', JSON.stringify(parsed));
@@ -581,7 +570,7 @@ function scrapeUsage() {
 
     // Each time the page (re-)loads, cancel the previous timer and restart.
     // This ensures we only scrape after the LAST navigation has settled.
-    scrapeWin.webContents.on('console-message', (_e, level, msg) => {
+    scrapeWin.webContents.on('console-message', (_e, _level, msg) => {
       log('Renderer console:', msg);
     });
 
@@ -802,9 +791,10 @@ mb.on('ready', () => {
   ]);
   mb.tray.on('right-click', () => mb.tray.popUpContextMenu(contextMenu));
 
-  // Keep popup open when it loses focus (blur refocus)
+  // Keep popup open when it loses focus — use once so the listener doesn't stack on repeat shows
   mb.on('after-show', () => {
     if (mb.window) {
+      mb.window.removeAllListeners('blur');
       mb.window.on('blur', () => {
         if (mb.window && !mb.window.isDestroyed()) {
           mb.window.focus();
