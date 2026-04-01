@@ -405,8 +405,9 @@ function openLoginWindow() {
 
 // ── Usage polling ─────────────────────────────────────────────────────────────
 
-let pollTimer  = null;
-let scrapeWin  = null;
+let pollTimer      = null;
+let scrapeWin      = null;
+let nullScrapeCount = 0;
 
 const SCRAPE_JS = `
 (() => {
@@ -547,16 +548,28 @@ async function pollUsage() {
       sessionCaptured  = false;
       saveSession();
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      // Open login window immediately — never leave user stuck on loading screen
       openLoginWindow();
       return;
     }
     if (data && (data.five_hour !== undefined || data.seven_day !== undefined)) {
+      nullScrapeCount = 0;
       session.usageData = data;
       session.savedAt   = new Date().toISOString();
       saveSession();
       checkUsageThresholds(data);
       updateTrayTitle(data);
+    } else {
+      nullScrapeCount++;
+      log('Null scrape count:', nullScrapeCount);
+      if (nullScrapeCount >= 3) {
+        nullScrapeCount = 0;
+        log('3 consecutive nulls — opening login window');
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        sessionCaptured = false;
+        session.cookies = '';
+        saveSession();
+        openLoginWindow();
+      }
     }
   } catch { /* ignore */ }
 }
