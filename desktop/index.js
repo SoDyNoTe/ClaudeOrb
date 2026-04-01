@@ -699,6 +699,14 @@ mb.on('ready', () => {
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open Dashboard', click: () => mb.showWindow() },
     { type: 'separator' },
+    { label: 'Reconnect / Log in again', click: () => {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      sessionCaptured = false;
+      session.cookies = '';
+      saveSession();
+      openLoginWindow();
+    }},
+    { type: 'separator' },
     { label: 'Quit ClaudeOrb', click: () => app.quit() },
   ]);
   mb.tray.on('right-click', () => mb.tray.popUpContextMenu(contextMenu));
