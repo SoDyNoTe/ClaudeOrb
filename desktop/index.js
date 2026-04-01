@@ -348,14 +348,6 @@ httpApp.post('/open-detached', (_req, res) => {
 
 httpApp.listen(3000, '127.0.0.1');
 
-// Strip CSP headers on the scraper/login session so executeJavaScript works on claude.ai.
-// Registered once here — not per-scrape — to avoid repeated re-registration.
-electronSession.fromPartition('persist:claudeai').webRequest.onHeadersReceived((details, callback) => {
-  const headers = { ...details.responseHeaders };
-  delete headers['content-security-policy'];
-  delete headers['Content-Security-Policy'];
-  callback({ responseHeaders: headers });
-});
 
 // ── Login window ──────────────────────────────────────────────────────────────
 
@@ -760,6 +752,15 @@ const mb = menubar({
 
 mb.on('ready', () => {
   app.setAppUserModelId('com.claudeorb.app');
+
+  // Strip CSP headers on the scraper/login session so executeJavaScript works on claude.ai.
+  // Must run after app is ready — session API is unavailable before that.
+  electronSession.fromPartition('persist:claudeai').webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders };
+    delete headers['content-security-policy'];
+    delete headers['Content-Security-Policy'];
+    callback({ responseHeaders: headers });
+  });
 
   // Set tray icon explicitly after tray exists
   trayIcon.setTemplateImage(false);
