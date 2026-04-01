@@ -408,22 +408,63 @@ function openLoginWindow() {
 let pollTimer  = null;
 let scrapeWin  = null;
 
-// Fetch usage API using the hidden window's session cookies.
-// Uses absolute URL to avoid 404s from relative path on redirect pages.
-const FETCH_JS = `
-(async () => {
+const SCRAPE_JS = `
+(() => {
   try {
-    if (location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
+    const body = document.body ? document.body.innerText : '';
+    if (!body || document.location.pathname.startsWith('/login') || document.location.pathname.startsWith('/auth')) {
       return JSON.stringify({ auth_expired: true });
     }
-    const res = await fetch('https://claude.ai/api/usage', {
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (res.status === 401 || res.status === 403) return JSON.stringify({ auth_expired: true });
-    if (!res.ok) return JSON.stringify({ error: res.status });
-    const data = await res.json();
-    return JSON.stringify(data);
+
+    // ── Locate section boundaries ─────────────────────────────────────────────
+    // Page structure (confirmed from live page):
+    //   "Current session\nResets in X hr Y min\nN% used"
+    //   "Weekly limits\n...All models\nResets Tue HH:MM PM\nN% used"
+    //   "Extra usage\n..."
+
+    const sessionIdx = body.indexOf('Current session');
+    const weekIdx    = body.indexOf('Weekly limits');
+    const extraIdx   = body.indexOf('Extra usage');
+
+    // ── Helper: extract first "N% used" after a given index ──────────────────
+    function extractPct(from, to) {
+      const slice = body.slice(from, to !== -1 ? to : from + 500);
+      const m = slice.match(/(\\d{1,3})%\\s*used/i);
+      return m ? parseInt(m[1], 10) : null;
+    }
+
+    // ── Helper: extract "Resets in ..." or "Resets Dayname ..." after index ──
+    function extractResets(from, to) {
+      const slice = body.slice(from, to !== -1 ? to : from + 500);
+      const m = slice.match(/Resets in ([^\\n]+)|Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\\n]+)/i);
+      if (!m) return null;
+      return (m[1] || m[2]).trim();
+    }
+
+    const five_hour      = sessionIdx !== -1 ? extractPct(sessionIdx, weekIdx)    : null;
+    const five_hour_resets = sessionIdx !== -1 ? extractResets(sessionIdx, weekIdx) : null;
+    const seven_day      = weekIdx    !== -1 ? extractPct(weekIdx, extraIdx)      : null;
+    const seven_day_resets = weekIdx  !== -1 ? extractResets(weekIdx, extraIdx)   : null;
+
+    // ── Extra usage ───────────────────────────────────────────────────────────
+    let extra_usage = null;
+    if (extraIdx !== -1) {
+      const extraSlice = body.slice(extraIdx, extraIdx + 600);
+      const spentM  = extraSlice.match(/([€$£][\\d.,]+)\\s*spent/i);
+      const eResetM = extraSlice.match(/Resets\\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\\n]{0,20})/i);
+      const ePctM   = extraSlice.match(/(\\d+)%\\s*used/i);
+      const limitM  = extraSlice.match(/([€$£][\\d.,]+)\\s*[\\n\\r]+[^\\n]*[Mm]onthly/);
+      if (spentM || ePctM) {
+        extra_usage = {
+          spent:       spentM  ? spentM[1]              : null,
+          utilization: ePctM   ? parseInt(ePctM[1], 10) : null,
+          resets_at:   eResetM ? eResetM[1].trim()      : null,
+          limit:       limitM  ? limitM[1]              : null,
+        };
+      }
+    }
+
+    return JSON.stringify({ five_hour, seven_day, five_hour_resets, seven_day_resets, extra_usage });
   } catch (e) {
     return JSON.stringify({ error: e.message });
   }
@@ -455,16 +496,23 @@ function scrapeUsage() {
 
     scrapeWin.webContents.on('did-finish-load', async () => {
       try {
-        // Wait for page and cookies to be fully ready before fetching
-        await new Promise(r => setTimeout(r, 2000));
+        // Wait for SPA to fully render
+        await new Promise(r => setTimeout(r, 5000));
         if (settled) return;
-        const raw = await scrapeWin.webContents.executeJavaScript(FETCH_JS);
+        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS);
         const parsed = JSON.parse(raw);
-        log('API fetch result:', JSON.stringify(parsed));
+        log('Scrape parsed:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
-        if (parsed.error) { log('API error:', parsed.error); finish(null); return; }
-        // API returns { five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at }, ... }
-        finish((parsed.five_hour !== undefined || parsed.seven_day !== undefined) ? parsed : null);
+        if (parsed.error) { log('Scrape error:', parsed.error); finish(null); return; }
+        const out = {};
+        if (parsed.five_hour !== null && parsed.five_hour !== undefined)
+          out.five_hour = { utilization: parsed.five_hour, resets_at: parsed.five_hour_resets || null };
+        if (parsed.seven_day !== null && parsed.seven_day !== undefined)
+          out.seven_day = { utilization: parsed.seven_day, resets_at: parsed.seven_day_resets || null };
+        if (parsed.extra_usage)
+          out.extra_usage = parsed.extra_usage;
+        log('Scraper result:', JSON.stringify(out));
+        finish(Object.keys(out).length ? out : null);
       } catch (e) {
         log('executeJavaScript error:', e.message);
         finish(null);
@@ -472,7 +520,7 @@ function scrapeUsage() {
     });
 
     scrapeWin.on('closed', () => { scrapeWin = null; });
-    scrapeWin.loadURL('https://claude.ai/');
+    scrapeWin.loadURL('https://claude.ai/settings/usage');
   });
 }
 
