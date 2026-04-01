@@ -363,6 +363,7 @@ async function checkLoginState() {
     if (!hasCookies) return;
 
     sessionCaptured    = true;
+    nullScrapeCount    = 0;
     session.cookies    = 'captured';
     session.savedAt    = new Date().toISOString();
     saveSession();
@@ -559,12 +560,14 @@ async function pollUsage() {
       checkUsageThresholds(data);
       updateTrayTitle(data);
     } else {
+      // Don't increment if polling already stopped (login window open)
+      if (!pollTimer) return;
       nullScrapeCount++;
       log('Null scrape count:', nullScrapeCount);
       if (nullScrapeCount >= 3) {
-        nullScrapeCount = 0;
-        log('3 consecutive nulls — opening login window');
+        log('3 consecutive nulls — stopping polling and opening login window');
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        nullScrapeCount = 0;
         sessionCaptured = false;
         session.cookies = '';
         saveSession();
@@ -715,6 +718,7 @@ mb.on('ready', () => {
     { label: 'Reconnect / Log in again', click: () => {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       sessionCaptured = false;
+      nullScrapeCount = 0;
       session.cookies = '';
       saveSession();
       openLoginWindow();
