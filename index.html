@@ -711,8 +711,10 @@
       .hero-orb { width: 220px; height: 220px; }
       .hero-actions { justify-content: center; }
       .hero-sub { margin: 0 auto 40px; }
-      .stats-bar { padding: 24px; gap: 0; }
-      .stat-item { padding: 0 16px; }
+      .stats-bar { padding: 24px; gap: 0; display: grid; grid-template-columns: 1fr 1fr; }
+      .stat-item { padding: 16px; border-right: none; border-bottom: 1px solid var(--border); }
+      .stat-item:nth-child(odd) { border-right: 1px solid var(--border); }
+      .stat-item:nth-last-child(-n+2) { border-bottom: none; }
       section { padding: 64px 24px; }
       .features-grid { grid-template-columns: 1fr; }
       .how-grid { grid-template-columns: 1fr; }
