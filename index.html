@@ -733,6 +733,7 @@
       <li><a href="#demo">See it in action</a></li>
       <li><a href="#how-it-works">How it works</a></li>
       <li><a href="#install">Install</a></li>
+      <li><a href="#hardware">Hardware</a></li>
       <li><a href="#roadmap">Roadmap</a></li>
     </ul>
     <a class="nav-cta" href="https://github.com/SoDyNoTe/ClaudeOrb/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg">Download for Mac</a>
@@ -1086,9 +1087,30 @@
         <span class="roadmap-tag soon">Planned</span>
       </div>
       <div class="roadmap-item">
-        <div class="roadmap-dot soon"></div>
+        <div class="roadmap-dot next"></div>
         <div class="roadmap-text">Physical desk display — a small screen that sits next to your monitor</div>
-        <span class="roadmap-tag soon">Someday</span>
+        <span class="roadmap-tag next">Up next</span>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="hardware">
+    <div class="how-grid">
+      <div class="how-steps">
+        <div class="section-label">Coming to your desk</div>
+        <h2>Your Claude usage. Always visible.</h2>
+        <p class="section-sub">A physical display that sits next to your monitor and shows your usage in real time. No app switching, no notifications — just a glance.</p>
+        <form id="hardware-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <input type="email" name="email" placeholder="your@email.com" required style="flex:1;min-width:200px;background:#161616;border:1px solid #222;color:#e5e5e5;border-radius:10px;padding:14px 16px;font-size:15px;font-family:inherit;outline:none;" />
+          <button type="submit" class="btn-primary" style="white-space:nowrap;">Join waitlist</button>
+        </form>
+        <p style="font-size:12px;color:#999;font-family:'DM Mono',monospace;" id="hardware-form-msg">No spam. Just a ping when it's ready.</p>
+      </div>
+      <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;inset:-40px;background:radial-gradient(ellipse at 50% 50%, rgba(217,119,6,0.15) 0%, transparent 70%);pointer-events:none;"></div>
+        <img src="RoundDisplayThree_BG_remove.png" alt="ClaudeOrb physical display concept" style="width:100%;max-width:480px;position:relative;" />
       </div>
     </div>
   </section>
@@ -1105,5 +1127,35 @@
   </footer>
 
 <script data-goatcounter="https://sodynote.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script>
+document.getElementById('hardware-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const msg = document.getElementById('hardware-form-msg');
+  const btn = this.querySelector('button');
+  btn.disabled = true;
+  btn.textContent = 'Joining...';
+  try {
+    const res = await fetch('https://formspree.io/f/mkopypvj', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: new FormData(this)
+    });
+    if (res.ok) {
+      msg.textContent = "You're on the list 🟠";
+      msg.style.color = '#d97706';
+      this.reset();
+      btn.textContent = 'Done ✓';
+    } else {
+      msg.textContent = 'Something went wrong. Try again.';
+      btn.disabled = false;
+      btn.textContent = 'Join waitlist';
+    }
+  } catch {
+    msg.textContent = 'Something went wrong. Try again.';
+    btn.disabled = false;
+    btn.textContent = 'Join waitlist';
+  }
+});
+</script>
 </body>
 </html>
