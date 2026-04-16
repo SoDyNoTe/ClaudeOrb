@@ -149,6 +149,7 @@
     flex-direction: column;
     gap: 8px;
     overflow-y: auto;
+    padding-bottom: 0;
   }
 
   /* ── Section labels ── */
@@ -516,6 +517,34 @@
   .hl-amber { color: var(--amber); }
   .hl-green { color: var(--green); }
   .hl-red   { color: var(--red); }
+
+  /* ── Update banner ── */
+  .update-banner {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 14px;
+    background: #1a2a1a;
+    border-bottom: 1px solid #2a4a2a;
+    font-size: 11px;
+    color: var(--green);
+  }
+  .update-banner.visible { display: flex; }
+  .update-banner-text { flex: 1; }
+  .update-btn {
+    background: var(--green);
+    color: #0d1117;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .update-btn:hover { opacity: 0.85; }
 </style>
 </head>
 <body>
@@ -537,6 +566,12 @@
       </button>
       <button class="btn-close" id="btn-close" title="Close">×</button>
     </div>
+  </div>
+
+  <!-- Update banner (hidden until update-downloaded fires) -->
+  <div class="update-banner" id="update-banner">
+    <span class="update-banner-text" id="update-banner-text">A new version is available.</span>
+    <button class="update-btn" id="update-btn">Download update</button>
   </div>
 
   <!-- Tabs -->
@@ -786,11 +821,11 @@ if (isDetached) {
   document.getElementById('btn-close').addEventListener('click', () => window.close());
 } else {
   document.getElementById('btn-close').addEventListener('click', () => {
-    fetch('http://localhost:3000/hide-window', { method: 'POST' }).catch(() => {});
+    fetch('http://localhost:45678/hide-window', { method: 'POST' }).catch(() => {});
   });
 }
 document.getElementById('btn-detach').addEventListener('click', () => {
-  fetch('http://localhost:3000/open-detached', { method: 'POST' }).catch(() => {});
+  fetch('http://localhost:45678/open-detached', { method: 'POST' }).catch(() => {});
 });
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -855,10 +890,10 @@ function extractUsage(obj) {
 async function fetchAll() {
   try {
     const [sRes, uRes, t7Res, t30Res] = await Promise.all([
-      fetch('http://localhost:3000/stats'),
-      fetch('http://localhost:3000/usage-data'),
-      fetch('http://localhost:3000/trends'),
-      fetch('http://localhost:3000/trends/30'),
+      fetch('http://localhost:45678/stats'),
+      fetch('http://localhost:45678/usage-data'),
+      fetch('http://localhost:45678/trends'),
+      fetch('http://localhost:45678/trends/30'),
     ]);
 
     if (sRes.ok)   stats      = await sRes.json();
@@ -966,7 +1001,7 @@ function fmtCountdown(val) {
 }
 
 function renderCode() {
-  if (!stats) return;
+  if (!stats || stats.error) return;
   const t = stats.today || {};
   const w = stats.week  || {};
   document.getElementById('c-tokens-today').textContent = fmtTokens(t.tokens || 0);
@@ -1066,7 +1101,7 @@ function renderBars(containerId, data, todayKey) {
 }
 
 function renderMinimal() {
-  if (!stats) return;
+  if (!stats || stats.error) return;
   const t   = stats.today || {};
   const fhP = usageData?.five_hour?.utilization;
   const sdP = usageData?.seven_day?.utilization;
@@ -1106,7 +1141,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     const target = document.getElementById('pane-' + tab.dataset.tab);
     if (target) {
-      const flexPanes = ['pane-trends', 'pane-code', 'pane-minimal'];
+      const flexPanes = ['pane-trends', 'pane-code', 'pane-minimal', 'pane-usage'];
       target.style.display = flexPanes.includes(target.id) ? 'flex' : 'block';
       // Trigger reflow for transition
       void target.offsetWidth;
@@ -1144,8 +1179,55 @@ setInterval(() => {
   }
 }, 5_000);
 
+// ── IPC fast-path (Electron) ──────────────────────────────────────────────────
+if (window.electronAPI) {
+  // On load: immediately pull whatever data the main process already has —
+  // avoids the "Connecting..." flash while waiting for the first HTTP poll cycle.
+  window.electronAPI.getUsage().then(data => {
+    console.log('IPC get-usage response:', JSON.stringify(data));
+    if (data && data.usageData) {
+      hasSession = data.hasSession;
+      usageData  = data.usageData;
+      render();
+    }
+  }).catch(err => console.error('IPC get-usage failed:', err));
+
+  // Real-time push: main process sends this immediately after each successful scrape.
+  window.electronAPI.onUsagePush(data => {
+    console.log('IPC usage-push received:', JSON.stringify(data));
+    if (data && data.usageData) {
+      hasSession = data.hasSession;
+      usageData  = data.usageData;
+      render();
+    }
+  });
+}
+
+// ── Update banner ─────────────────────────────────────────────────────────────
+
+// Register the IPC listener regardless of load order
+if (window.electronAPI) {
+  window.electronAPI.onUpdateAvailable(info => {
+    console.log('update-available received:', info);
+    const banner = document.getElementById('update-banner');
+    const text   = document.getElementById('update-banner-text');
+    if (info?.version) text.textContent = `v${info.version} available — download the latest`;
+    banner.classList.add('visible');
+  });
+} else {
+  console.warn('window.electronAPI not available — preload may not be loaded');
+}
+
+// Click handler uses HTTP — works in any window regardless of preload
+document.getElementById('update-btn').addEventListener('click', () => {
+  console.log('update-btn clicked — opening download page via HTTP');
+  fetch('http://localhost:45678/open-download-page', { method: 'POST' })
+    .then(() => console.log('open-download-page OK'))
+    .catch(err => console.error('open-download-page error:', err));
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
-fetch('http://localhost:3000/trigger-poll', { method: 'POST' }).catch(() => {});
+fetch('http://localhost:45678/trigger-poll', { method: 'POST' }).catch(() => {});
 fetchAll();
 setInterval(fetchAll, 5_000);
 </script>

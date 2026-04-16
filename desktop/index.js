@@ -3,17 +3,33 @@ require('events').EventEmitter.defaultMaxListeners = 20;
 
 const { menubar }                                      = require('menubar');
 const { app, BrowserWindow, Notification,
-        Menu, screen, nativeImage, session: electronSession } = require('electron');
+        Menu, screen, nativeImage, ipcMain, shell,
+        session: electronSession } = require('electron');
 const express                                          = require('express');
 const fs                                               = require('fs');
 const path                                             = require('path');
 const os                                               = require('os');
 const AutoLaunch                                       = require('auto-launch');
+const { autoUpdater }                                  = require('electron-updater');
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 const logFile = path.join(os.homedir(), 'claudeorb-debug.log');
+const LOG_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const LOG_TAIL_LINES = 100;
 const log = (...args) => {
-  try { fs.appendFileSync(logFile, new Date().toISOString() + ' ' + args.join(' ') + '\n'); } catch {}
+  try {
+    // Rotate: if file exceeds 5 MB, keep only the last 100 lines
+    try {
+      const stat = fs.statSync(logFile);
+      if (stat.size > LOG_MAX_BYTES) {
+        const existing = fs.readFileSync(logFile, 'utf8');
+        const lines = existing.split('\n');
+        const kept = lines.slice(-LOG_TAIL_LINES).join('\n');
+        fs.writeFileSync(logFile, kept + '\n');
+      }
+    } catch { /* file may not exist yet — ignore */ }
+    fs.appendFileSync(logFile, new Date().toISOString() + ' ' + args.join(' ') + '\n');
+  } catch {}
 };
 log('App starting');
 
@@ -59,14 +75,15 @@ loadSession();
 // ── Model pricing (per million tokens) ───────────────────────────────────────
 
 const MODEL_PRICING = {
-  'claude-opus-4':    { input: 15.00, output: 75.00 },
-  'claude-opus-4-5':  { input: 15.00, output: 75.00 },
-  'claude-opus-4-6':  { input: 15.00, output: 75.00 },
-  'claude-sonnet-4':  { input:  3.00, output: 15.00 },
-  'claude-sonnet-4-5':{ input:  3.00, output: 15.00 },
+  'claude-opus-4-7':  { input:  5.00, output: 25.00 },
+  'claude-opus-4-6':  { input:  5.00, output: 25.00 },
+  'claude-opus-4-5':  { input:  5.00, output: 25.00 },
+  'claude-opus-4':    { input:  5.00, output: 25.00 },
   'claude-sonnet-4-6':{ input:  3.00, output: 15.00 },
-  'claude-haiku-4-5': { input:  0.80, output:  4.00 },
-  'claude-haiku-4':   { input:  0.80, output:  4.00 },
+  'claude-sonnet-4-5':{ input:  3.00, output: 15.00 },
+  'claude-sonnet-4':  { input:  3.00, output: 15.00 },
+  'claude-haiku-4-5': { input:  1.00, output:  5.00 },
+  'claude-haiku-4':   { input:  1.00, output:  5.00 },
 };
 
 function modelPrice(modelId) {
@@ -118,7 +135,14 @@ function parseJsonlFiles() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
-  const WEEK = 7 * 24 * 60 * 60 * 1000;
+
+  // Monday of the current calendar week (Mon–Sun)
+  const weekStart = new Date(todayStart);
+  const dow = weekStart.getDay(); // 0=Sun
+  weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
+  const weekStartMs = weekStart.getTime();
+
+  const STREAK_WINDOW = 30 * 24 * 60 * 60 * 1000; // 30-day lookback for streaks
 
   const today = { tokens: 0, cost: 0, lines: 0, files: new Set(), modelTokens: {} };
   const week  = { tokens: 0, cost: 0 };
@@ -147,9 +171,11 @@ function parseJsonlFiles() {
       const tokens  = inp + out + (usage.cache_read_input_tokens || 0);
       const cost    = calcCost(model, usage);
 
-      if (age <= WEEK) {
+      if (ts >= weekStartMs) {
         week.tokens += tokens;
         week.cost   += cost;
+      }
+      if (age <= STREAK_WINDOW) {
         activeDays.add(new Date(ts).toISOString().slice(0, 10));
       }
 
@@ -304,6 +330,12 @@ httpApp.post('/trigger-poll', (_req, res) => {
   res.json({ ok: true });
 });
 
+httpApp.post('/open-download-page', (_req, res) => {
+  log('HTTP open-download-page — opening https://claudeorb.com');
+  shell.openExternal('https://claudeorb.com');
+  res.json({ ok: true });
+});
+
 let detachedWin = null;
 let detachedWinPos = null; // { x, y } — last saved position
 
@@ -333,9 +365,10 @@ httpApp.post('/open-detached', (_req, res) => {
     transparent:     false,
     skipTaskbar:     true,
     icon:            appIcon,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'popup-preload.js') },
   });
   detachedWin.loadURL(`file://${path.join(__dirname, 'popup.html')}?detached=true&icon=${encodeURIComponent(icon22DataUrl)}`);
+  armUpdateDrain(detachedWin);
   detachedWin.on('moved', () => {
     if (detachedWin && !detachedWin.isDestroyed()) {
       const [wx, wy] = detachedWin.getPosition();
@@ -346,7 +379,7 @@ httpApp.post('/open-detached', (_req, res) => {
   res.json({ ok: true });
 });
 
-httpApp.listen(3000, '127.0.0.1');
+httpApp.listen(45678, '127.0.0.1');
 
 
 // ── Login window ──────────────────────────────────────────────────────────────
@@ -536,7 +569,17 @@ function scrapeUsage() {
           return;
         }
 
+        // Log raw HTML snapshot so we can see what the page actually contains
+        try {
+          const html = await scrapeWin.webContents.executeJavaScript(
+            'document.documentElement.outerHTML.slice(0, 4000)', true);
+          log(`HTML snapshot (attempt ${attempt}):`, html);
+        } catch (e) {
+          log('HTML snapshot failed:', e.message);
+        }
+
         const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS, true);
+        log(`Scrape raw return (attempt ${attempt}):`, String(raw).slice(0, 500));
         const parsed = JSON.parse(raw);
         log('Scrape parsed:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
@@ -549,7 +592,15 @@ function scrapeUsage() {
         if (parsed.extra_usage)
           out.extra_usage = parsed.extra_usage;
         log('Scraper result:', JSON.stringify(out));
-        finish(Object.keys(out).length ? out : null);
+        if (Object.keys(out).length) {
+          finish(out);
+        } else if (attempt < 3) {
+          log(`Empty scrape result (attempt ${attempt}), retrying in 2s…`);
+          scrapeTimer = setTimeout(() => runScrape(attempt + 1), 2000);
+        } else {
+          log('Empty scrape result after 3 attempts — giving up');
+          finish(null);
+        }
       } catch (e) {
         log(`executeJavaScript error (attempt ${attempt}):`, e.message);
         if (attempt < 5) {
@@ -562,8 +613,17 @@ function scrapeUsage() {
 
     // Each time the page (re-)loads, cancel the previous timer and restart.
     // This ensures we only scrape after the LAST navigation has settled.
-    scrapeWin.webContents.on('console-message', (_e, _level, msg) => {
-      log('Renderer console:', msg);
+    scrapeWin.webContents.on('console-message', (_e, level, msg) => {
+      // Skip renderer noise — only log actual errors or ClaudeOrb-relevant messages
+      if (msg.startsWith('[')) return;
+      if (level >= 2) log('Renderer error:', msg); // 2=warning, 3=error
+    });
+
+    // dom-ready fires as soon as the DOM is parseable (before subresources finish).
+    // Paired with did-finish-load below so whichever fires last wins the timer.
+    scrapeWin.webContents.on('dom-ready', () => {
+      clearTimeout(scrapeTimer);
+      scrapeTimer = setTimeout(() => runScrape(1), 1500);
     });
 
     scrapeWin.webContents.on('did-finish-load', () => {
@@ -585,6 +645,122 @@ function updateTrayTitle(data) {
   if (fhP != null) parts.push(`${fhP}%`);
   if (sdP != null) parts.push(`${sdP}%`);
   mb.tray.setTitle(parts.length ? parts.join(' · ') : '—');
+}
+
+// ── IPC: push usage to popup ──────────────────────────────────────────────────
+
+// ipcMain.handle so the popup can request current data synchronously on load
+ipcMain.handle('get-usage', () => ({
+  usageData:  session.usageData,
+  hasSession: !!(session.usageData || sessionCaptured),
+  savedAt:    session.savedAt,
+}));
+
+ipcMain.handle('open-download-page', () => {
+  log('IPC open-download-page — opening https://claudeorb.com');
+  return shell.openExternal('https://claudeorb.com');
+});
+
+ipcMain.handle('preload-loaded', () => {
+  log('popup-preload.js confirmed loaded by renderer');
+});
+
+// Queued payload for when the popup loads after data is already available
+let pendingPopupPush = null;
+
+// Cached update info — replayed to any window that loads after the download event fires
+let downloadedUpdateInfo = null;
+
+function pushUsageToPopup(data) {
+  const payload = {
+    usageData:  data,
+    hasSession: true,
+    savedAt:    session.savedAt,
+  };
+  const win = mb?.window;
+  if (win && !win.isDestroyed() && win.webContents.isLoading() === false) {
+    log('IPC send to popup:', JSON.stringify(payload).slice(0, 200));
+    win.webContents.send('usage-push', payload);
+    pendingPopupPush = null;
+  } else {
+    // Popup not ready yet — queue it; the popup's did-finish-load will drain it
+    log('IPC popup not ready, queuing push');
+    pendingPopupPush = payload;
+  }
+}
+
+// Drain the queue the moment the menubar popup finishes loading
+function armPopupLoadDrain() {
+  const win = mb?.window;
+  if (!win || win.isDestroyed()) return;
+  win.webContents.on('did-finish-load', () => {
+    if (pendingPopupPush) {
+      log('IPC draining queued push to popup');
+      win.webContents.send('usage-push', pendingPopupPush);
+      pendingPopupPush = null;
+    }
+    if (downloadedUpdateInfo) {
+      win.webContents.send('update-downloaded', downloadedUpdateInfo);
+    }
+  });
+}
+
+// Send cached update info to a window once it finishes loading
+function armUpdateDrain(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.on('did-finish-load', () => {
+    if (downloadedUpdateInfo) {
+      win.webContents.send('update-downloaded', downloadedUpdateInfo);
+    }
+  });
+}
+
+// ── Auto-updater ──────────────────────────────────────────────────────────────
+
+function initAutoUpdater() {
+  autoUpdater.autoDownload    = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger          = null; // we handle logging ourselves
+
+  autoUpdater.on('checking-for-update', () => {
+    log('Updater: checking for update');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    log('Updater: update available', info.version);
+    try {
+      new Notification({
+        title: 'ClaudeOrb update downloading…',
+        body:  `Version ${info.version} is downloading in the background.`,
+        icon:  path.join(__dirname, 'assets', 'icon.icns'),
+      }).show();
+    } catch { /* notifications may be unsupported */ }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    log('Updater: update downloaded', info.version);
+    downloadedUpdateInfo = { version: info.version };
+    for (const win of [mb?.window, detachedWin]) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('update-downloaded', downloadedUpdateInfo);
+      }
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    log('Updater: up to date');
+  });
+
+  autoUpdater.on('error', (err) => {
+    log('Updater error:', err.message);
+    // Silent — never crash or alert the user for update failures
+  });
+
+  // Check on startup, then every 4 hours
+  autoUpdater.checkForUpdates().catch(err => log('Updater check failed:', err.message));
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(err => log('Updater check failed:', err.message));
+  }, 4 * 60 * 60 * 1000);
 }
 
 async function pollUsage() {
@@ -611,6 +787,7 @@ async function pollUsage() {
       saveSession();
       checkUsageThresholds(data);
       updateTrayTitle(data);
+      pushUsageToPopup(data);
     } else {
       // Don't increment if polling already stopped (login window open)
       if (!pollTimer) return;
@@ -742,6 +919,7 @@ const mb = menubar({
     webPreferences: {
       nodeIntegration:  false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'popup-preload.js'),
     },
   },
   showOnRightClick: false,
@@ -752,6 +930,11 @@ const mb = menubar({
 
 mb.on('ready', () => {
   app.setAppUserModelId('com.claudeorb.app');
+  log('Preload path:', path.join(__dirname, 'popup-preload.js'));
+  armPopupLoadDrain();
+  initAutoUpdater();
+
+
 
   // Strip CSP headers on the scraper/login session so executeJavaScript works on claude.ai.
   // Must run after app is ready — session API is unavailable before that.
@@ -761,6 +944,7 @@ mb.on('ready', () => {
     delete headers['Content-Security-Policy'];
     callback({ responseHeaders: headers });
   });
+  log('CSP interceptor active');
 
   // Set tray icon explicitly after tray exists
   trayIcon.setTemplateImage(false);

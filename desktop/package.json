@@ -1,7 +1,7 @@
 {
   "name": "claudeorb",
   "productName": "ClaudeOrb",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Mac menubar companion app for Claude Code usage stats",
   "author": "Alexander Herbst",
   "main": "index.js",
@@ -14,10 +14,19 @@
     "productName": "ClaudeOrb",
     "mac": {
       "icon": "assets/icon.icns"
+    },
+    "dmg": {
+      "artifactName": "ClaudeOrb-arm64.dmg"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "SoDyNoTe",
+      "repo": "ClaudeOrb"
     }
   },
   "dependencies": {
     "auto-launch": "^5.0.6",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "menubar": "^9.4.0"
   },

@@ -31,7 +31,7 @@ So instead of making sketchy API calls or asking you to paste tokens, the app op
 
 ### Installation
 
-Download the `.dmg` from the [Releases page](https://github.com/SoDyNoTe/ClaudeOrb/releases/download/v1.0.0/ClaudeOrb-1.0.0-arm64.dmg), open it, and drag ClaudeOrb to your Applications folder.
+Download the `.dmg` from the [Releases page](https://github.com/SoDyNoTe/ClaudeOrb/releases/latest/download/ClaudeOrb-arm64.dmg), open it, and drag ClaudeOrb to your Applications folder.
 
 When you first open the app, macOS will show a warning saying "ClaudeOrb.app cannot be opened". This is because the app is not yet signed with an Apple Developer certificate. It does not mean the app is unsafe. You can bypass this in one of three ways:
 
