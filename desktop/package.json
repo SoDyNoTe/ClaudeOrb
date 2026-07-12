@@ -1,7 +1,7 @@
 {
   "name": "claudeorb",
   "productName": "ClaudeOrb",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Mac menubar companion app for Claude Code usage stats",
   "author": "Alexander Herbst",
   "main": "index.js",

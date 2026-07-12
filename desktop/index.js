@@ -544,8 +544,11 @@ function scrapeUsage() {
         const url = scrapeWin.webContents.getURL();
         log(`Scraping attempt ${attempt} at URL:`, url);
 
-        // If SPA navigated away from settings page, re-navigate
-        if (!url.includes('/settings/usage')) {
+        // claude.ai serves the usage panel both as a standalone path
+        // (/settings/usage) and as a hash-routed modal over /new
+        // (/new#settings/usage) — accept either form. Matching without the
+        // leading slash covers both and avoids an endless re-navigation loop.
+        if (!url.includes('settings/usage')) {
           log('Not at settings/usage, got:', url, '— re-navigating');
           scrapeWin.loadURL('https://claude.ai/settings/usage');
           return; // did-finish-load will re-arm the timer
