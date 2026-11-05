@@ -939,8 +939,9 @@ function renderUsage() {
   }
 
   connectCard.style.display = 'none';
-  card5h.style.display      = 'block';
-  card7d.style.display      = 'block';
+  // Ultra has no 5-hour limit, so its usage page has no session bucket — hide that card.
+  card5h.style.display      = usageData.five_hour ? 'block' : 'none';
+  card7d.style.display      = usageData.seven_day ? 'block' : 'none';
 
   function fillCard(ringId, pctId, usedId, remainId, resetsId, bucket) {
     if (!bucket) return;

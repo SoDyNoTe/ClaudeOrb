@@ -1,13 +1,14 @@
 {
   "name": "claudeorb",
   "productName": "ClaudeOrb",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Mac menubar companion app for Claude Code usage stats",
   "author": "Alexander Herbst",
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac"
+    "build": "electron-builder --mac",
+    "build:win": "electron-builder --win --x64 --publish never"
   },
   "build": {
     "appId": "com.claudeorb.app",
@@ -22,6 +23,23 @@
       "provider": "github",
       "owner": "SoDyNoTe",
       "repo": "ClaudeOrb"
+    },
+    "win": {
+      "icon": "assets/icon-win.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "ClaudeOrb-Setup.${ext}",
+      "shortcutName": "ClaudeOrb"
     }
   },
   "dependencies": {

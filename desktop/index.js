@@ -2,6 +2,7 @@
 require('events').EventEmitter.defaultMaxListeners = 20;
 
 const { menubar }                                      = require('menubar');
+const { pathToFileURL }                                = require('url');
 const { app, BrowserWindow, Notification,
         Menu, screen, nativeImage, ipcMain, shell,
         session: electronSession } = require('electron');
@@ -33,11 +34,37 @@ const log = (...args) => {
 };
 log('App starting');
 
+// A second copy would fight over port 45678 and add a second menu bar icon.
+if (!app.requestSingleInstanceLock()) {
+  log('Another instance is already running — exiting');
+  app.exit(0);
+}
+
+// Leave a trace in the log instead of dying silently.
+process.on('uncaughtException',  (e) => log('Uncaught exception:', e?.stack || e));
+process.on('unhandledRejection', (e) => log('Unhandled rejection:', e?.stack || e));
+app.on('render-process-gone', (_e, wc, d) => {
+  log('Renderer gone:', d.reason, d.exitCode);
+  try { if (mb.window && !mb.window.isDestroyed() && wc === mb.window.webContents) mb.window.reload(); } catch { /* mb not created yet */ }
+});
+app.on('child-process-gone', (_e, d) => log('Child process gone:', d.type, d.reason, d.exitCode));
+
+// Electron quits by default once every window is closed. This is a menu bar app:
+// the popup or detached window can be closed and the hidden scraper window is
+// destroyed after every poll, so without this the app silently exits.
+app.on('window-all-closed', () => log('All windows closed — staying in the menu bar'));
+
 // ── App icon ──────────────────────────────────────────────────────────────────
 
 const iconPath      = path.join(__dirname, 'assets', 'icon.png');
 const appIcon       = nativeImage.createFromPath(iconPath);
-const trayIcon      = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+const isMac         = process.platform === 'darwin';
+// Windows/Linux tray icons are 16pt; the macOS menu bar uses 22pt.
+const trayIcon      = nativeImage.createFromPath(iconPath).resize(isMac ? { width: 22, height: 22 } : { width: 16, height: 16 });
+// .icns only renders on macOS — Windows/Linux notifications need the PNG.
+const notifyIcon    = isMac ? path.join(__dirname, 'assets', 'icon.icns') : iconPath;
+// Plain `file://${path}` breaks on Windows (backslashes, drive letters).
+const popupUrl      = (query) => `${pathToFileURL(path.join(__dirname, 'popup.html')).href}?${query}`;
 let icon22DataUrl = '';
 try {
   const icon22Base64 = fs.readFileSync(path.join(__dirname, 'assets', 'icon22.png')).toString('base64');
@@ -367,7 +394,7 @@ httpApp.post('/open-detached', (_req, res) => {
     icon:            appIcon,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'popup-preload.js') },
   });
-  detachedWin.loadURL(`file://${path.join(__dirname, 'popup.html')}?detached=true&icon=${encodeURIComponent(icon22DataUrl)}`);
+  detachedWin.loadURL(popupUrl(`detached=true&icon=${encodeURIComponent(icon22DataUrl)}`));
   armUpdateDrain(detachedWin);
   detachedWin.on('moved', () => {
     if (detachedWin && !detachedWin.isDestroyed()) {
@@ -449,13 +476,22 @@ const SCRAPE_JS = `
 (() => {
   try {
     const body = document.body ? document.body.innerText : '';
-    if (!body || document.location.pathname.startsWith('/login') || document.location.pathname.startsWith('/auth')) {
+    if (document.location.pathname.startsWith('/login') || document.location.pathname.startsWith('/auth')) {
       return JSON.stringify({ auth_expired: true });
     }
+    // A blank document shows up mid-redirect (/settings/usage → /new#settings/usage);
+    // that is not a logout, so let the caller retry.
+    if (!body.trim()) return JSON.stringify({ not_ready: true });
 
+    // claude.ai renamed "Weekly limits" → "This week" and "Extra usage" → "Usage credits".
+    // Indexes are case-sensitive so "Fable this week" doesn't match "This week".
+    const firstIdx = (...labels) => labels.map(l => body.indexOf(l)).filter(i => i !== -1).reduce((a, b) => Math.min(a, b), Infinity);
+    const toIdx    = (i) => i === Infinity ? -1 : i;
     const sessionIdx = body.indexOf('Current session');
-    const weekIdx    = body.indexOf('Weekly limits');
-    const extraIdx   = body.indexOf('Extra usage');
+    const weekIdx    = toIdx(firstIdx('This week', 'Weekly limits'));
+    const extraIdx   = toIdx(firstIdx('Extra usage', 'Usage credits'));
+    const weekEndIdx = weekIdx === -1 ? -1 : toIdx(['Fable this week', 'Limit resets', 'Usage credits', 'Extra usage']
+      .map(l => body.indexOf(l, weekIdx + 1)).filter(i => i !== -1).reduce((a, b) => Math.min(a, b), Infinity));
 
     function extractPct(from, to) {
       const slice = body.slice(from, to !== -1 ? to : from + 500);
@@ -465,15 +501,15 @@ const SCRAPE_JS = `
 
     function extractResets(from, to) {
       const slice = body.slice(from, to !== -1 ? to : from + 500);
-      const m = slice.match(/Resets in ([^\\n]+)|Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\\n]+)/i);
+      const m = slice.match(/Resets (?:in|at) ([^\\n]+)|Resets ((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\\n]+)/i);
       if (!m) return null;
       return (m[1] || m[2]).trim();
     }
 
     const five_hour      = sessionIdx !== -1 ? extractPct(sessionIdx, weekIdx)    : null;
     const five_hour_resets = sessionIdx !== -1 ? extractResets(sessionIdx, weekIdx) : null;
-    const seven_day      = weekIdx    !== -1 ? extractPct(weekIdx, extraIdx)      : null;
-    const seven_day_resets = weekIdx  !== -1 ? extractResets(weekIdx, extraIdx)   : null;
+    const seven_day      = weekIdx    !== -1 ? extractPct(weekIdx, weekEndIdx)    : null;
+    const seven_day_resets = weekIdx  !== -1 ? extractResets(weekIdx, weekEndIdx) : null;
 
     let extra_usage = null;
     if (extraIdx !== -1) {
@@ -503,7 +539,7 @@ function scrapeUsage() {
   return new Promise((resolve) => {
     if (scrapeWin && !scrapeWin.isDestroyed()) scrapeWin.destroy();
 
-    scrapeWin = new BrowserWindow({
+    const win = scrapeWin = new BrowserWindow({
       show: false,
       icon: appIcon,
       webPreferences: {
@@ -525,23 +561,23 @@ function scrapeUsage() {
       settled = true;
       clearTimeout(timeout);
       clearTimeout(scrapeTimer);
-      if (scrapeWin && !scrapeWin.isDestroyed()) scrapeWin.destroy();
-      scrapeWin = null;
+      if (!win.isDestroyed()) win.destroy();
+      if (scrapeWin === win) scrapeWin = null;
       resolve(result);
     };
 
     timeout = setTimeout(() => { log('Scraper timed out'); finish(null); }, 25_000);
 
     const runScrape = async (attempt = 1) => {
-      if (settled) return;
+      if (settled || win.isDestroyed()) return;
       try {
         // Guard: still navigating — wait and retry
-        if (scrapeWin.webContents.isLoading()) {
+        if (win.webContents.isLoading()) {
           log('Page still loading, waiting...');
           scrapeTimer = setTimeout(() => runScrape(attempt), 1500);
           return;
         }
-        const url = scrapeWin.webContents.getURL();
+        const url = win.webContents.getURL();
         log(`Scraping attempt ${attempt} at URL:`, url);
 
         // claude.ai serves the usage panel both as a standalone path
@@ -550,13 +586,13 @@ function scrapeUsage() {
         // leading slash covers both and avoids an endless re-navigation loop.
         if (!url.includes('settings/usage')) {
           log('Not at settings/usage, got:', url, '— re-navigating');
-          scrapeWin.loadURL('https://claude.ai/settings/usage');
+          win.loadURL('https://claude.ai/settings/usage');
           return; // did-finish-load will re-arm the timer
         }
 
         // Quick sanity check before running the full script
         try {
-          const readyState = await scrapeWin.webContents.executeJavaScript('document.readyState');
+          const readyState = await win.webContents.executeJavaScript('document.readyState');
           log('document.readyState:', readyState);
           if (readyState !== 'complete') {
             scrapeTimer = setTimeout(() => runScrape(attempt), 1500);
@@ -574,18 +610,24 @@ function scrapeUsage() {
 
         // Log raw HTML snapshot so we can see what the page actually contains
         try {
-          const html = await scrapeWin.webContents.executeJavaScript(
+          const html = await win.webContents.executeJavaScript(
             'document.documentElement.outerHTML.slice(0, 4000)', true);
           log(`HTML snapshot (attempt ${attempt}):`, html);
         } catch (e) {
           log('HTML snapshot failed:', e.message);
         }
 
-        const raw = await scrapeWin.webContents.executeJavaScript(SCRAPE_JS, true);
+        const raw = await win.webContents.executeJavaScript(SCRAPE_JS, true);
         log(`Scrape raw return (attempt ${attempt}):`, String(raw).slice(0, 500));
         const parsed = JSON.parse(raw);
         log('Scrape parsed:', JSON.stringify(parsed));
         if (parsed.auth_expired) { finish('auth_expired'); return; }
+        if (parsed.not_ready) {
+          log(`Blank page (attempt ${attempt}), retrying in 2s…`);
+          if (attempt < 5) scrapeTimer = setTimeout(() => runScrape(attempt + 1), 2000);
+          else finish(null);
+          return;
+        }
         if (parsed.error) { log('Scrape JS error:', parsed.error); finish(null); return; }
         const out = {};
         if (parsed.five_hour !== null && parsed.five_hour !== undefined)
@@ -605,6 +647,7 @@ function scrapeUsage() {
           finish(null);
         }
       } catch (e) {
+        if (settled) return; // window was torn down mid-call (timeout) — nothing to retry
         log(`executeJavaScript error (attempt ${attempt}):`, e.message);
         if (attempt < 5) {
           scrapeTimer = setTimeout(() => runScrape(attempt + 1), 2000);
@@ -616,7 +659,7 @@ function scrapeUsage() {
 
     // Each time the page (re-)loads, cancel the previous timer and restart.
     // This ensures we only scrape after the LAST navigation has settled.
-    scrapeWin.webContents.on('console-message', (_e, level, msg) => {
+    win.webContents.on('console-message', (_e, level, msg) => {
       // Skip renderer noise — only log actual errors or ClaudeOrb-relevant messages
       if (msg.startsWith('[')) return;
       if (level >= 2) log('Renderer error:', msg); // 2=warning, 3=error
@@ -624,30 +667,32 @@ function scrapeUsage() {
 
     // dom-ready fires as soon as the DOM is parseable (before subresources finish).
     // Paired with did-finish-load below so whichever fires last wins the timer.
-    scrapeWin.webContents.on('dom-ready', () => {
+    win.webContents.on('dom-ready', () => {
       clearTimeout(scrapeTimer);
       scrapeTimer = setTimeout(() => runScrape(1), 1500);
     });
 
-    scrapeWin.webContents.on('did-finish-load', () => {
+    win.webContents.on('did-finish-load', () => {
       clearTimeout(scrapeTimer);
       scrapeTimer = setTimeout(() => runScrape(1), 4000);
     });
 
-    scrapeWin.on('closed', () => { scrapeWin = null; });
-    scrapeWin.loadURL('https://claude.ai/settings/usage');
+    win.on('closed', () => { if (scrapeWin === win) scrapeWin = null; });
+    win.loadURL('https://claude.ai/settings/usage');
   });
 }
 
 function updateTrayTitle(data) {
   if (!mb.tray) return;
-  if (!data) { mb.tray.setTitle('—'); return; }
+  if (!data) { mb.tray.setTitle('—'); mb.tray.setToolTip('ClaudeOrb'); return; }
   const fhP = typeof data.five_hour === 'object' ? data.five_hour?.utilization : data.five_hour;
   const sdP = typeof data.seven_day === 'object' ? data.seven_day?.utilization : data.seven_day;
   const parts = [];
   if (fhP != null) parts.push(`${fhP}%`);
   if (sdP != null) parts.push(`${sdP}%`);
   mb.tray.setTitle(parts.length ? parts.join(' · ') : '—');
+  const tip = [fhP != null && `Session ${fhP}%`, sdP != null && `Week ${sdP}%`].filter(Boolean).join(' · ');
+  mb.tray.setToolTip(tip ? `ClaudeOrb — ${tip}` : 'ClaudeOrb');
 }
 
 // ── IPC: push usage to popup ──────────────────────────────────────────────────
@@ -735,7 +780,7 @@ function initAutoUpdater() {
       new Notification({
         title: 'ClaudeOrb update downloading…',
         body:  `Version ${info.version} is downloading in the background.`,
-        icon:  path.join(__dirname, 'assets', 'icon.icns'),
+        icon:  notifyIcon,
       }).show();
     } catch { /* notifications may be unsupported */ }
   });
@@ -832,7 +877,7 @@ const notifiedThresholds = {
 function checkUsageThresholds(data) {
   function notify(title, body) {
     try {
-      new Notification({ title, body, icon: path.join(__dirname, 'assets', 'icon.icns') }).show();
+      new Notification({ title, body, icon: notifyIcon }).show();
     } catch { /* ignore if notifications unsupported */ }
   }
 
@@ -911,7 +956,7 @@ function checkUsageThresholds(data) {
 // ── Menubar ───────────────────────────────────────────────────────────────────
 
 const mb = menubar({
-  index:  `file://${path.join(__dirname, 'popup.html')}?icon=${encodeURIComponent(icon22DataUrl)}`,
+  index:  popupUrl(`icon=${encodeURIComponent(icon22DataUrl)}`),
   tooltip: 'ClaudeOrb',
   icon:   trayIcon,
   browserWindow: {
@@ -981,7 +1026,7 @@ mb.on('ready', () => {
 
   // Keep popup open when it loses focus — use once so the listener doesn't stack on repeat shows
   mb.on('after-show', () => {
-    if (mb.window) {
+    if (isMac && mb.window) {
       mb.window.removeAllListeners('blur');
       mb.window.on('blur', () => {
         if (mb.window && !mb.window.isDestroyed()) {
@@ -1032,6 +1077,7 @@ mb.on('ready', () => {
 // ── Quit cleanup ──────────────────────────────────────────────────────────────
 
 app.on('before-quit', () => {
+  log('App quitting');
   if (pollTimer)  { clearInterval(pollTimer); pollTimer = null; }
   if (scrapeWin && !scrapeWin.isDestroyed()) { scrapeWin.destroy(); scrapeWin = null; }
 });
